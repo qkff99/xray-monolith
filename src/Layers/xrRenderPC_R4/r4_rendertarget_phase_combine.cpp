@@ -46,6 +46,8 @@ void CRenderTarget::phase_combine()
 
 	//	TODO: DX10: Remove half poxel offset
 	bool _menu_pp = g_pGamePersistent ? g_pGamePersistent->OnRenderPPUI_query() : false;
+	const bool ssfxSSRActive = RImplementation.o.ssfx_ssr && ps_ssfx_ssr_quality > 0 &&
+		(ps_ssfx_ssr_2.z > 0.0f || ps_ssfx_ssr_2.w > 0.0f) && !Device.m_SecondViewport.IsSVPFrame();
 
 	u32 Offset = 0;
 	Fvector2 p0, p1;
@@ -108,18 +110,22 @@ void CRenderTarget::phase_combine()
 		// Disable when rendering SecondViewport
 		if (!Device.m_SecondViewport.IsSVPFrame())
 		{
-			// Clear RT
 			FLOAT ColorRGBA[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-			HW.pContext->ClearRenderTargetView(rt_ssfx_temp->pRT, ColorRGBA);
-			HW.pContext->ClearRenderTargetView(rt_ssfx_temp2->pRT, ColorRGBA);
+			const bool ssfxAOActive = RImplementation.o.ssfx_ao && ps_ssfx_ao.y > 0;
+			const bool ssfxILActive = RImplementation.o.ssfx_il && ps_ssfx_il.y > 0;
 
-			if (RImplementation.o.ssfx_ao && ps_ssfx_ao.y > 0)
+			if (ssfxAOActive || (ssfxSSRActive && ps_ssfx_ssr.y > 0))
+				HW.pContext->ClearRenderTargetView(rt_ssfx_temp->pRT, ColorRGBA);
+			if (ssfxILActive || ssfxSSRActive)
+				HW.pContext->ClearRenderTargetView(rt_ssfx_temp2->pRT, ColorRGBA);
+
+			if (ssfxAOActive)
 			{
 				ssfx_PrevPos_Requiered = true;
 				phase_ssfx_ao(); // [SSFX] - New AO Phase
 			}
 
-			if (RImplementation.o.ssfx_il && ps_ssfx_il.y > 0)
+			if (ssfxILActive)
 			{
 				ssfx_PrevPos_Requiered = true;
 				phase_ssfx_il(); // [SSFX] - New IL Phase
@@ -328,20 +334,20 @@ void CRenderTarget::phase_combine()
 		}
 	}
 
-	//Copy previous rt
-	if (!RImplementation.o.dx10_msaa)
-		HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0->pTexture->surface_get());
-	else
-		HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0_r->pTexture->surface_get());
-
-	if (RImplementation.o.ssfx_ssr && !Device.m_SecondViewport.IsSVPFrame())
+	if (ssfxSSRActive)
 	{
+		if (!RImplementation.o.dx10_msaa)
+			HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0->pTexture->surface_get());
+		else
+			HW.pContext->CopyResource(rt_Generic_temp->pTexture->surface_get(), rt_Generic_0_r->pTexture->surface_get());
+
 		ssfx_PrevPos_Requiered = true;
 		phase_ssfx_ssr(); // [SSFX] - New SSR Phase
 	}
 
 	// [SSFX] - Water SSR rendering
-	if (RImplementation.o.ssfx_water && !Device.m_SecondViewport.IsSVPFrame())
+	if (RImplementation.o.ssfx_water && !RImplementation.GMBase.RGraph.mapWater.empty() &&
+		!Device.m_SecondViewport.IsSVPFrame())
 	{
 		FLOAT ColorRGBA[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 		HW.pContext->ClearRenderTargetView(rt_ssfx_temp->pRT, ColorRGBA);
@@ -385,7 +391,8 @@ void CRenderTarget::phase_combine()
 	RImplementation.GMBase.r_dsgraph_render_water();
 	
 	{
-		if (RImplementation.o.ssfx_rain)
+		if (RImplementation.o.ssfx_rain &&
+			g_pGamePersistent->Environment().CurrentEnv->rain_density >= EPS_L)
 		{
 			phase_ssfx_rain(); // Render a small color buffer to do the refraction and more
 

@@ -335,7 +335,11 @@ void CRender::render_sun_cascade(u32 cascade_ind)
 	Target->phase_accumulator();
 
 #if defined(USE_DX10) || defined(USE_DX11)
-	if (Target->use_minmax_sm_this_frame())
+	const bool bVolumetricSunshafts =
+		cascade_ind == m_sun_cascades.size() - 1 &&
+		RImplementation.o.advancedpp &&
+		(ps_sunshafts_mode == R2SS_VOLUMETRIC || ps_sunshafts_mode == R2SS_COMBINE_SUNSHAFTS);
+	if (Target->use_minmax_sm_this_frame() && (cascade_ind == 0 || bVolumetricSunshafts))
 	{
 #if defined(USE_DX10) || defined(USE_DX11)
 		PIX_EVENT(SE_SUN_NEAR_MINMAX_GENERATE);

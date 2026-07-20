@@ -188,6 +188,7 @@ public:
 
 	bool m_bMakeAsyncSS;
 	bool m_bFirstFrameAfterReset; // Determines weather the frame is the first after resetting device.
+	bool m_bSsfxBloomEmissiveDirty = true;
 	xr_vector<sun::cascade> m_sun_cascades;
 
 	CFrustum rainwet_cull_frustum;

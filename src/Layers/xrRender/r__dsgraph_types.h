@@ -165,8 +165,11 @@ namespace R_dsgraph
         R_constant_table* pCS;
 		STextureList* pTextures;
 
-        RenderPacket(const DSGraphItem<u32, false>& _item, const SPass& pass) : item(_item)
+        RenderPacket(const DSGraphItem<u32, false>& _item, const SPass& pass, float _distance) : item(_item)
         {
+			static_assert(sizeof(item.sortKey) == sizeof(_distance));
+			memcpy(&item.sortKey, &_distance, sizeof(item.sortKey));
+
             // Extract resource pointers from shader pass (previously used as map keys)
 #if defined(USE_DX10) || defined(USE_DX11)
             pVS = &*pass.vs;
@@ -215,7 +218,36 @@ namespace R_dsgraph
 
         bool operator<(const RenderPacket& other) const noexcept
         {
-            return sortKey < other.sortKey;
+            if (sortKey != other.sortKey)
+                return sortKey < other.sortKey;
+
+            // The packed key intentionally keeps only 16 bits per pointer. Resolve
+            // collisions before using distance as an opaque-state tie-breaker.
+            if (pState != other.pState)
+                return (u64)pState < (u64)other.pState;
+
+#if defined(USE_DX10) || defined(USE_DX11)
+            if (pGS != other.pGS)
+                return (u64)pGS < (u64)other.pGS;
+#endif
+
+#ifdef USE_DX11
+            if (pHS != other.pHS)
+                return (u64)pHS < (u64)other.pHS;
+            if (pDS != other.pDS)
+                return (u64)pDS < (u64)other.pDS;
+#endif
+
+            if (pVS != other.pVS)
+                return (u64)pVS < (u64)other.pVS;
+            if (pPS != other.pPS)
+                return (u64)pPS < (u64)other.pPS;
+            if (pCS != other.pCS)
+                return (u64)pCS < (u64)other.pCS;
+            if (pTextures != other.pTextures)
+                return (u64)pTextures < (u64)other.pTextures;
+
+            return item.sortKey < other.item.sortKey;
         }
 	};
 

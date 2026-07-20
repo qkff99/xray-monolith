@@ -411,7 +411,7 @@ void CRenderTarget::phase_ssfx_bloom()
 	RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 
 	// BLOOM LENS /////////////////////////////////////////////////////
-	if (ps_r2_mask_control.x > 0)
+	if (ps_r2_mask_control.x > 0 && (ps_ssfx_bloom_2.z > 0 || ps_ssfx_bloom_2.w > 0))
 	{
 		set_viewport_size(HW.pContext, w / 4.0f, h / 4.0f);
 

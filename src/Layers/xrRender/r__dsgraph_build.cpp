@@ -211,6 +211,10 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
 	}
 #endif
 
+	const float opaque_distance =
+		shader_priority == 0 && !sh->flags.bStrictB2F && !pVisual->dcast_ParticleCustom() && _valid(distSQ)
+		? distSQ : 0.f;
+
 	for (u32 iPass = 0; iPass < sh->passes.size(); ++iPass)
 	{
 		// the most common node
@@ -223,9 +227,10 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
 		SPass& pass = *sh->passes[iPass];
 
 #if RENDER==R_R1
-		AddToRenderQueue(RGraph.mapDynamicPasses[shader_priority][iPass], item, pass);
+		AddToRenderQueue(RGraph.mapDynamicPasses[shader_priority][iPass], item, pass, opaque_distance);
 #else
-		AddToRenderQueue(RGraph.mapDynamicPasses[shader_priority][iPass], { 0, SSA, val_pObject, pVisual, xform, nullptr, i_mask[CDSGraphManager::fl_hud] }, pass);
+		AddToRenderQueue(RGraph.mapDynamicPasses[shader_priority][iPass],
+			{ 0, SSA, val_pObject, pVisual, xform, nullptr, i_mask[CDSGraphManager::fl_hud] }, pass, opaque_distance);
 #endif
 	}
 }
@@ -351,11 +356,14 @@ void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
 
 		SPass& pass	= *sh->passes[iPass];
 
-		AddToRenderQueue(RGraph.mapStaticPasses[shader_priority][iPass], { 0, SSA, nullptr, pVisual, nullptr, nullptr, false }, pass);
+		AddToRenderQueue(RGraph.mapStaticPasses[shader_priority][iPass],
+			{ 0, SSA, nullptr, pVisual, nullptr, nullptr, false }, pass,
+			shader_priority == 0 && _valid(distSQ) ? distSQ : 0.f);
 	}
 }
 
-void CDSGraphManager::AddToRenderQueue(R_dsgraph::RenderQueue& queue, const R_dsgraph::DSGraphItem<u32, false>& item, const SPass& pass)
+void CDSGraphManager::AddToRenderQueue(R_dsgraph::RenderQueue& queue, const R_dsgraph::DSGraphItem<u32, false>& item,
+	const SPass& pass, float distance)
 {
 	if (PortalTraverseDbg_Enabled())
 	{
@@ -380,7 +388,7 @@ void CDSGraphManager::AddToRenderQueue(R_dsgraph::RenderQueue& queue, const R_ds
 		}
 	}
 
-	queue.emplace_back(item, pass);
+	queue.emplace_back(item, pass, distance);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

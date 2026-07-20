@@ -258,7 +258,7 @@ void CRenderTarget::phase_ssfx_ssr()
 	HW.pContext->CopyResource(rt_ssfx_ssr->pTexture->surface_get(), rt_ssfx->pTexture->surface_get());
 
 	// Disable/Enable Blur if the value is <= 0
-	//if (ps_ssfx_ssr.y > 0 || ps_ssfx_ssr.x > 1.0)
+	if (ps_ssfx_ssr.y > 0)
 	{
 		// BLUR PHASE 1 //////////////////////////////////////////////////////////
 		u_setrt(rt_ssfx_temp, 0, 0, HW.pBaseZB);
@@ -301,6 +301,26 @@ void CRenderTarget::phase_ssfx_ssr()
 		RCache.set_Geometry(g_combine);
 		RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
 	}
+	else
+	{
+		// NO BLUR //////////////////////////////////////////////////
+		u_setrt(rt_ssfx_temp2, 0, 0, HW.pBaseZB);
+		RCache.set_CullMode(CULL_NONE);
+		RCache.set_Stencil(FALSE);
+
+		// Fill vertex buffer
+		pv = (FVF::TL*)RCache.Vertex.Lock(4, g_combine->vb_stride, Offset);
+		pv->set(0, h, d_Z, d_W, C, p0.x, p1.y); pv++;
+		pv->set(0, 0, d_Z, d_W, C, p0.x, p0.y); pv++;
+		pv->set(w, h, d_Z, d_W, C, p1.x, p1.y); pv++;
+		pv->set(w, 0, d_Z, d_W, C, p1.x, p0.y); pv++;
+		RCache.Vertex.Unlock(4, g_combine->vb_stride);
+
+		// Draw COLOR
+		RCache.set_Element(s_ssfx_ssr->E[4]);
+		RCache.set_Geometry(g_combine);
+		RCache.Render(D3DPT_TRIANGLELIST, Offset, 0, 4, 0, 2);
+	}
 
 	// COMBINE //////////////////////////////////////////////////////////
 	// Reset Viewport
@@ -335,6 +355,9 @@ void CRenderTarget::phase_ssfx_ssr()
 void CRenderTarget::phase_ssfx_volumetric_blur()
 {
     PROF_EVENT("phase_ssfx_volumetric_blur");
+
+	if (!m_bHasActiveVolumetric && !m_bHasActiveVolumetric_spot)
+		return;
 
 	// Be careful and clear the buffer ( rt_Generic_2 contain unspeakable stuff if no volumetric is written )
 	if (!m_bHasActiveVolumetric)

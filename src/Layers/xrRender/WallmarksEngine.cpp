@@ -512,6 +512,8 @@ void CWallmarksEngine::Render()
                         static_wallmark* W = static_vec[j];
                         if (!RImplementation.ViewBase.testSphere_dirty(W->bounds.P, W->bounds.R))
                             continue;
+                        if (!RImplementation.HOM.visible(W->bounds))
+                            continue;
 
                         Device.Statistic->RenderDUMP_WMS_Count++;
                         float dst = Device.vCameraPosition.distance_to_sqr(W->bounds.P);

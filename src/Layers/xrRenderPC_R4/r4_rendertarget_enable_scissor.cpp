@@ -90,9 +90,88 @@ BOOL CRenderTarget::enable_scissor(light* L) // true if intersects near plane
 	}
 #endif
 
-	// Scissor
-	//. disable scissor because some bugs prevent it to work through multi-portals
-	//. if (!HW.Caps.bScissor)	return		near_intersect;
+	RCache.set_Scissor(nullptr);
+
+	const Fsphere& sphere = L->SpatialComponent->spatial.sphere;
+	if (L->flags.type == IRender_Light::REFLECTED || near_intersect ||
+		!_valid(sphere.P.x) || !_valid(sphere.P.y) || !_valid(sphere.P.z) ||
+		!_valid(sphere.R) || sphere.R <= 0.f ||
+		Device.vCameraPosition.distance_to_sqr(sphere.P) <= _sqr(sphere.R) ||
+		dwWidth == 0 || dwHeight == 0)
+	{
+		return near_intersect;
+	}
+
+	float min_x = flt_max;
+	float min_y = flt_max;
+	float max_x = -flt_max;
+	float max_y = -flt_max;
+
+	const auto project_point = [&](const Fvector& point)
+	{
+		Fvector4 world;
+		world.set(point.x, point.y, point.z, 1.f);
+		Fvector4 clip;
+		Device.mFullTransform.transform(clip, world);
+		if (!_valid(clip.x) || !_valid(clip.y) || !_valid(clip.z) || !_valid(clip.w) ||
+			clip.w <= EPS_S || clip.z < 0.f)
+			return false;
+
+		const float inv_w = 1.f / clip.w;
+		const float screen_x = (clip.x * inv_w * .5f + .5f) * float(dwWidth);
+		const float screen_y = (-clip.y * inv_w * .5f + .5f) * float(dwHeight);
+		if (!_valid(screen_x) || !_valid(screen_y))
+			return false;
+
+		min_x = _min(min_x, screen_x);
+		min_y = _min(min_y, screen_y);
+		max_x = _max(max_x, screen_x);
+		max_y = _max(max_y, screen_y);
+		return true;
+	};
+
+	if (L->flags.type == IRender_Light::SPOT)
+	{
+		for (u32 i = 0; i < DU_CONE_NUMVERTEX; ++i)
+		{
+			Fvector point;
+			L->m_xform.transform_tiny(point, du_cone_vertices[i]);
+			if (!project_point(point))
+				return near_intersect;
+		}
+	}
+	else
+	{
+		Fvector radius;
+		radius.set(sphere.R, sphere.R, sphere.R);
+		Fbox bounds;
+		bounds.setb(sphere.P, radius);
+
+		for (u32 i = 0; i < 8; ++i)
+		{
+			Fvector point;
+			bounds.getpoint(i, point);
+			if (!project_point(point))
+				return near_intersect;
+		}
+	}
+
+	const float width = float(dwWidth);
+	const float height = float(dwHeight);
+	if (max_x <= 0.f || max_y <= 0.f || min_x >= width || min_y >= height)
+		return near_intersect;
+
+	Irect rect;
+	rect.x1 = min_x <= 0.f ? 0 : clampr(iFloor(min_x) - 1, 0, int(dwWidth));
+	rect.y1 = min_y <= 0.f ? 0 : clampr(iFloor(min_y) - 1, 0, int(dwHeight));
+	rect.x2 = max_x >= width ? int(dwWidth) : clampr(iCeil(max_x) + 1, 0, int(dwWidth));
+	rect.y2 = max_y >= height ? int(dwHeight) : clampr(iCeil(max_y) + 1, 0, int(dwHeight));
+	if (rect.x1 < rect.x2 && rect.y1 < rect.y2 &&
+		(rect.x1 != 0 || rect.y1 != 0 || rect.x2 != int(dwWidth) || rect.y2 != int(dwHeight)))
+	{
+		RCache.set_Scissor(&rect);
+	}
+
 	return near_intersect;
 
 #if 0

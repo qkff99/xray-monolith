@@ -56,6 +56,19 @@ void CRender::render_lights(light_Package& LP)
 	stats.ls_unshadowed_point_in += (u32)LP.v_point.size();
 	stats.ls_unshadowed_spot_in += (u32)LP.v_spot.size();
 	stats.ls_shadowed_peak_in = _max(stats.ls_shadowed_peak_in, (u32)LP.v_shadowed.size());
+
+	const auto remove_zero_contribution = [](xr_vector<light*>& lights)
+	{
+		lights.erase(std::remove_if(lights.begin(), lights.end(), [](const light* L)
+		{
+			return !_valid(L->range) || L->range <= 0.f ||
+				(L->color.r == 0.f && L->color.g == 0.f && L->color.b == 0.f);
+		}), lights.end());
+	};
+	remove_zero_contribution(LP.v_shadowed);
+	remove_zero_contribution(LP.v_point);
+	remove_zero_contribution(LP.v_spot);
+
 	//////////////////////////////////////////////////////////////////////////
 	// 0. apply hud_mode projection if necessary
 	hud_light_apply(saved_pos, LP.v_shadowed);

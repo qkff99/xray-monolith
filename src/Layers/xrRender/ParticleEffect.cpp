@@ -665,7 +665,7 @@ void CParticleEffect::Render(float)
 	{
 		if (m_Def && m_Def->m_Flags.is(CPEDef::dfSprite))
 		{
-			FVF::LIT* pv_start = (FVF::LIT*)RCache.Vertex.Lock(p_cnt * 4 * 4, geom->vb_stride, dwOffset);
+			FVF::LIT* pv_start = (FVF::LIT*)RCache.Vertex.Lock(p_cnt * 4, geom->vb_stride, dwOffset);
 			bool NeedExit = ParticleRenderStream(pv_start, p_cnt, particles, this);
 
 			dwCount = p_cnt << 2;

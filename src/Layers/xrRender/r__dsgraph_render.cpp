@@ -91,44 +91,37 @@ void CDSGraphManager::r_dsgraph_render_graph(RenderQueueArray& queues, u32 _prio
 		ID3DState* pState = nullptr;
 		STextureList* pTextures = nullptr;
 
-        u64 high = 0;
-
         for (auto& packet : queue)
         {
-            auto& currentKey = packet.sortKey;
-            if (currentKey.high != high)
+            // Full pointer comparisons are required here: the packed sort key
+            // deliberately truncates pointers and can collide.
+            if (packet.pState != pState)
             {
-                high = currentKey.high;
-
-                if (packet.pState != pState)
-                {
-                    pState = packet.pState;
-                    RCache.set_States(pState);
-                }
+                pState = packet.pState;
+                RCache.set_States(pState);
+            }
 
 #if defined(USE_DX10) || defined(USE_DX11)
-                if (packet.pGS != pGS)
-                {
-                    pGS = packet.pGS;
-                    RCache.set_GS(pGS);
-                }
+            if (packet.pGS != pGS)
+            {
+                pGS = packet.pGS;
+                RCache.set_GS(pGS);
+            }
 #endif
 
 #ifdef USE_DX11
-                if (packet.pHS != pHS)
-                {
-                    pHS = packet.pHS;
-                    RCache.set_HS(pHS);
-                }
-                if (packet.pDS != pDS)
-                {
-                    pDS = packet.pDS;
-                    RCache.set_DS(pDS);
-                }
-#endif
+            if (packet.pHS != pHS)
+            {
+                pHS = packet.pHS;
+                RCache.set_HS(pHS);
             }
+            if (packet.pDS != pDS)
+            {
+                pDS = packet.pDS;
+                RCache.set_DS(pDS);
+            }
+#endif
 
-            // Compare low key stuff regardless, too high collision probability
             if (packet.pVS != pVS)
             {
                 pVS = packet.pVS;
@@ -188,7 +181,7 @@ void CDSGraphManager::r_dsgraph_render_hud()
 	RImplementation.rmNormal();
 
 #if defined(USE_DX11) //  Redotix99: for 3D Shader Based Scopes 		
-	if (scope_3D_fake_enabled)
+	if (scope_3D_fake_enabled && !RGraph.mapScopeHUD.empty())
 	{
 		RCache.set_RT(RImplementation.Target->rt_ssfx_temp->pRT, 3); // Render scope_3D to any buffer
 
@@ -279,6 +272,9 @@ void CDSGraphManager::r_dsgraph_capture_hud()
 // strict-sorted render
 void CDSGraphManager::r_dsgraph_render_ScopeSorted()  //  Redotix99: for 3D Shader Based Scopes 	
 {
+	if (RGraph.mapScopeHUDSorted.empty())
+		return;
+
 	// Change projection
 	CHudInitializer initializer(true);
 
@@ -292,6 +288,10 @@ void CDSGraphManager::r_dsgraph_render_ScopeSorted()  //  Redotix99: for 3D Shad
 void CDSGraphManager::r_dsgraph_render_sorted_hud()
 {
 	PROF_EVENT("r_dsgraph_render_sorted_hud");
+
+	if (RGraph.mapHUDSorted.Sorted.empty())
+		return;
+
 #if	RENDER==R_R4
 	HW.pContext->CopyResource(RImplementation.Target->rt_Accumulator->pSurface, RImplementation.Target->rt_Generic_0->pSurface);
 #endif

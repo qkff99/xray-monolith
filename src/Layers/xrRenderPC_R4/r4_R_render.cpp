@@ -164,14 +164,6 @@ void CRender::Render()
 		Target->disable_aniso();
 	}
 
-	//  Redotix99: for 3D Shader Based Scopes 	
-	if (scope_3D_fake_enabled)
-	{
-		ID3D11Resource* zbuffer_res;
-		HW.pBaseZB->GetResource(&zbuffer_res);
-		HW.pContext->CopyResource(RImplementation.Target->rt_tempzb->pSurface, zbuffer_res);
-	}
-
 	if (RImplementation.o.dx10_msaa)
 		RCache.set_ZB(RImplementation.Target->rt_MSAADepth->pZRT);
 
@@ -190,6 +182,17 @@ void CRender::Render()
 		// level
 		Target->phase_scene_begin();
 		GMBase.r_dsgraph_capture_hud();
+
+		// Redotix99: for 3D Shader Based Scopes
+		if (scope_3D_fake_enabled &&
+			(!GMBase.RGraph.mapScopeHUD.empty() || !GMBase.RGraph.mapScopeHUDSorted.empty()))
+		{
+			ID3D11Resource* zbuffer_res;
+			HW.pBaseZB->GetResource(&zbuffer_res);
+			HW.pContext->CopyResource(RImplementation.Target->rt_tempzb->pSurface, zbuffer_res);
+			zbuffer_res->Release();
+		}
+
 		GMBase.r_dsgraph_render_hud();
 		GMBase.r_dsgraph_render_lods(true,true);
 		if (Details) Details->Render();
@@ -303,11 +306,25 @@ void CRender::Render()
 
 	if (RImplementation.o.ssfx_bloom)
 	{
-		// Render Emissive on `rt_ssfx_bloom_emissive`
-		FLOAT ColorRGBA[4] = { 0,0,0,0 };
-		HW.pContext->ClearRenderTargetView(Target->rt_ssfx_bloom_emissive->pRT, ColorRGBA);
-		Target->u_setrt(Target->rt_ssfx_bloom_emissive, NULL, NULL, !RImplementation.o.dx10_msaa ? HW.pBaseZB : Target->rt_MSAADepth->pZRT);
-		GMBase.r_dsgraph_render_emissive(true, true);
+		const bool hasBloomEmissive =
+			!GMBase.RGraph.mapStaticSorted.Emissive.empty() ||
+			!GMBase.RGraph.mapDynamicSorted.Emissive.empty() ||
+			!GMBase.RGraph.mapHUDSorted.Emissive.empty() ||
+			!GMBase.RGraph.mapHUDSorted.Sorted.empty();
+
+		if (hasBloomEmissive || m_bSsfxBloomEmissiveDirty)
+		{
+			FLOAT ColorRGBA[4] = { 0,0,0,0 };
+			HW.pContext->ClearRenderTargetView(Target->rt_ssfx_bloom_emissive->pRT, ColorRGBA);
+		}
+
+		if (hasBloomEmissive)
+		{
+			Target->u_setrt(Target->rt_ssfx_bloom_emissive, NULL, NULL, !RImplementation.o.dx10_msaa ? HW.pBaseZB : Target->rt_MSAADepth->pZRT);
+			GMBase.r_dsgraph_render_emissive(true, true);
+		}
+
+		m_bSsfxBloomEmissiveDirty = hasBloomEmissive;
 	}
 
 	// Lighting, non dependant on OCCQ

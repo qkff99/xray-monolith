@@ -478,6 +478,22 @@ void CDetailManager::UpdateVisibleM()
 			}
 		}
 	}
+
+	for (vis_list& list : m_visibles)
+	{
+		for (xr_vector<SlotItemVec*>& slots : list)
+		{
+			std::sort(slots.begin(), slots.end(), [](const SlotItemVec* left, const SlotItemVec* right)
+			{
+				const float left_distance = _valid(left->front()->distance) ? left->front()->distance : flt_max;
+				const float right_distance = _valid(right->front()->distance) ? right->front()->distance : flt_max;
+				if (left_distance != right_distance)
+					return left_distance < right_distance;
+				return (u64)left < (u64)right;
+			});
+		}
+	}
+
 	RDEVICE.Statistic->RenderDUMP_DT_VIS.End();
 }
 

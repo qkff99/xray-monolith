@@ -73,7 +73,8 @@ public:
 	void add_leafs_Dynamic(xr_vector<IRenderVisual*>& children, Fmatrix* xform);
 	void r_dsgraph_insert_dynamic(dxRender_Visual* pVisual, Fmatrix* xform);
 
-	void AddToRenderQueue(R_dsgraph::RenderQueue& queue, const R_dsgraph::DSGraphItem<u32, false>& item, const SPass& pass);
+	void AddToRenderQueue(R_dsgraph::RenderQueue& queue, const R_dsgraph::DSGraphItem<u32, false>& item, const SPass& pass,
+		float distance);
 	void r_dsgraph_render_graph(R_dsgraph::RenderQueueArray& queue, u32 _priority, bool _clear = true, bool static_geometry = true);
 	IC void r_dsgraph_render_graph(u32 _priority, bool _clear = true)
 	{
