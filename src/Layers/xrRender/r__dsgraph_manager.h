@@ -21,6 +21,10 @@ public:
 	CFrustum								i_frustum;		// input:	"view" frustum
 	Fmatrix									i_mXFORM;		// input:	4x4 xform
 	CSector* i_start;		// input:	starting point
+	bool									i_sun_shadow_order;
+	bool									i_alpha_depth_order;
+	bool									i_shadow_receiver_clip = false;
+	Fbox2									i_shadow_receiver_bounds;
 	xrCriticalSection						P_CS;
 	xrSRWLock								S_LC;
 
@@ -32,9 +36,30 @@ public:
 	ref_shader								f_shader;
 	ref_geom								f_geom;
 
-	CDSGraphManager(u32 options, u32 doptions, bool(&& mask)[7]) : i_options(options), i_doptions(doptions)
+	CDSGraphManager(u32 options, u32 doptions, bool(&& mask)[7], bool sun_shadow_order = false,
+		bool alpha_depth_order = false)
+		: i_options(options), i_doptions(doptions), i_sun_shadow_order(sun_shadow_order),
+		i_alpha_depth_order(sun_shadow_order || alpha_depth_order)
 	{
 		std::copy(mask, mask + 7, i_mask);
+	}
+	void set_shadow_receiver_bounds(const Fbox2* bounds)
+	{
+		i_shadow_receiver_clip = bounds != nullptr;
+		if (bounds)
+			i_shadow_receiver_bounds.set(*bounds);
+	}
+	bool shadow_receiver_visible(const Fbox& world_bounds) const
+	{
+		if (!i_shadow_receiver_clip)
+			return true;
+
+		Fbox projected;
+		projected.xform(world_bounds, i_mXFORM);
+		return projected.max.x >= i_shadow_receiver_bounds.min.x &&
+			projected.max.y >= i_shadow_receiver_bounds.min.y &&
+			projected.min.x <= i_shadow_receiver_bounds.max.x &&
+			projected.min.y <= i_shadow_receiver_bounds.max.y;
 	}
 	void initialize();
 	void destroy();
@@ -74,8 +99,10 @@ public:
 	void r_dsgraph_insert_dynamic(dxRender_Visual* pVisual, Fmatrix* xform);
 
 	void AddToRenderQueue(R_dsgraph::RenderQueue& queue, const R_dsgraph::DSGraphItem<u32, false>& item, const SPass& pass,
-		float distance);
-	void r_dsgraph_render_graph(R_dsgraph::RenderQueueArray& queue, u32 _priority, bool _clear = true, bool static_geometry = true);
+		float distance, bool alpha_depth_order);
+	void r_dsgraph_render_graph(R_dsgraph::RenderQueueArray& queue, u32 _priority, bool _clear = true,
+		bool static_geometry = true, s32 alpha_test = -1);
+	void r_dsgraph_render_sun_shadow(u32 _priority);
 	IC void r_dsgraph_render_graph(u32 _priority, bool _clear = true)
 	{
 		r_dsgraph_render_static(_priority, _clear);

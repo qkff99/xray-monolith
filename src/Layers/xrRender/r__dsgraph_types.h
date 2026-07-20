@@ -164,11 +164,15 @@ namespace R_dsgraph
 		ps_type pPS;
         R_constant_table* pCS;
 		STextureList* pTextures;
+		bool alphaTest;
+		u8 depthBucket;
 
-        RenderPacket(const DSGraphItem<u32, false>& _item, const SPass& pass, float _distance) : item(_item)
+        RenderPacket(const DSGraphItem<u32, false>& _item, const SPass& pass, float _distance, bool alpha_test)
+			: item(_item), alphaTest(alpha_test)
         {
 			static_assert(sizeof(item.sortKey) == sizeof(_distance));
 			memcpy(&item.sortKey, &_distance, sizeof(item.sortKey));
+			depthBucket = u8(item.sortKey >> 23);
 
             // Extract resource pointers from shader pass (previously used as map keys)
 #if defined(USE_DX10) || defined(USE_DX11)
@@ -249,6 +253,23 @@ namespace R_dsgraph
 
             return item.sortKey < other.item.sortKey;
         }
+	};
+
+	struct AlphaDepthRenderPacketLess
+	{
+		bool operator()(const RenderPacket& left, const RenderPacket& right) const noexcept
+		{
+			if (left.alphaTest != right.alphaTest)
+				return left.alphaTest < right.alphaTest;
+
+			if (left.alphaTest)
+			{
+				if (left.depthBucket != right.depthBucket)
+					return left.depthBucket < right.depthBucket;
+			}
+
+			return left < right;
+		}
 	};
 
 	using RenderQueue = xr_vector<RenderPacket, render_allocator::helper<RenderPacket>::result>;

@@ -35,6 +35,7 @@ namespace sun
 		Fvector3 cull_COP;
 		Fmatrix cull_xform;
 
-		CDSGraphManager GMCascade = CDSGraphManager(u32(0), u32(STYPE_RENDERABLE + STYPE_RENDERABLESHADOW), { true,false,false,false,true,false,false });
+		CDSGraphManager GMCascade = CDSGraphManager(u32(0), u32(STYPE_RENDERABLE + STYPE_RENDERABLESHADOW),
+			{ true,false,false,false,true,false,false }, RENDER == R_R4);
 	};
 } //namespace sun

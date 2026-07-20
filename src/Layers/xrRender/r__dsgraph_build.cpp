@@ -36,6 +36,14 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
 	Fvector Center;
 	xform->transform_tiny(Center, pVisual->vis.sphere.P);
 
+	if (i_shadow_receiver_clip)
+	{
+		Fbox world_bounds;
+		world_bounds.xform(pVisual->vis.box, *xform);
+		if (!shadow_receiver_visible(world_bounds))
+			return;
+	}
+
 	float distSQ;
 	float SSA = CalcSSA(distSQ, Center, pVisual);
     Flags16& flags = pVisual->flags;
@@ -214,6 +222,15 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
 	const float opaque_distance =
 		shader_priority == 0 && !sh->flags.bStrictB2F && !pVisual->dcast_ParticleCustom() && _valid(distSQ)
 		? distSQ : 0.f;
+	const bool sun_shadow_order = i_sun_shadow_order && shader_priority == 0;
+	const bool alpha_depth_order = i_alpha_depth_order && shader_priority == 0;
+	float render_distance = opaque_distance;
+	if (sun_shadow_order)
+	{
+		Fvector light_space;
+		i_mXFORM.transform(light_space, Center);
+		render_distance = _valid(light_space.z) ? _max(0.f, light_space.z) : 0.f;
+	}
 
 	for (u32 iPass = 0; iPass < sh->passes.size(); ++iPass)
 	{
@@ -227,10 +244,11 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
 		SPass& pass = *sh->passes[iPass];
 
 #if RENDER==R_R1
-		AddToRenderQueue(RGraph.mapDynamicPasses[shader_priority][iPass], item, pass, opaque_distance);
+		AddToRenderQueue(RGraph.mapDynamicPasses[shader_priority][iPass], item, pass, render_distance, alpha_depth_order);
 #else
 		AddToRenderQueue(RGraph.mapDynamicPasses[shader_priority][iPass],
-			{ 0, SSA, val_pObject, pVisual, xform, nullptr, i_mask[CDSGraphManager::fl_hud] }, pass, opaque_distance);
+			{ 0, SSA, val_pObject, pVisual, xform, nullptr, i_mask[CDSGraphManager::fl_hud] }, pass,
+			render_distance, alpha_depth_order);
 #endif
 	}
 }
@@ -239,6 +257,9 @@ extern float ps_r__ssaDISCARD_exp;
 extern float ps_r__ssaDISCARD_fade_k;
 void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
 {
+	if (!shadow_receiver_visible(pVisual->vis.box))
+		return;
+
 	if (m_static_seen.find(pVisual) != m_static_seen.end())
 	{
 		if (PortalTraverseDbg_Enabled())
@@ -348,6 +369,16 @@ void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
 	}
 #endif
 
+	const bool sun_shadow_order = i_sun_shadow_order && shader_priority == 0;
+	const bool alpha_depth_order = i_alpha_depth_order && shader_priority == 0;
+	float render_distance = shader_priority == 0 && _valid(distSQ) ? distSQ : 0.f;
+	if (sun_shadow_order)
+	{
+		Fvector light_space;
+		i_mXFORM.transform(light_space, pVisual->vis.sphere.P);
+		render_distance = _valid(light_space.z) ? _max(0.f, light_space.z) : 0.f;
+	}
+
 	for (u32 iPass = 0; iPass < sh->passes.size(); ++iPass)
 	{
 		// the most common node
@@ -355,15 +386,14 @@ void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
 			continue;
 
 		SPass& pass	= *sh->passes[iPass];
-
 		AddToRenderQueue(RGraph.mapStaticPasses[shader_priority][iPass],
 			{ 0, SSA, nullptr, pVisual, nullptr, nullptr, false }, pass,
-			shader_priority == 0 && _valid(distSQ) ? distSQ : 0.f);
+			render_distance, alpha_depth_order);
 	}
 }
 
 void CDSGraphManager::AddToRenderQueue(R_dsgraph::RenderQueue& queue, const R_dsgraph::DSGraphItem<u32, false>& item,
-	const SPass& pass, float distance)
+	const SPass& pass, float distance, bool alpha_depth_order)
 {
 	if (PortalTraverseDbg_Enabled())
 	{
@@ -388,7 +418,9 @@ void CDSGraphManager::AddToRenderQueue(R_dsgraph::RenderQueue& queue, const R_ds
 		}
 	}
 
-	queue.emplace_back(item, pass, distance);
+	const bool alpha_test =
+		alpha_depth_order && pass.state->state_code.get_RS(D3DRS_ALPHATESTENABLE, FALSE) != FALSE;
+	queue.emplace_back(item, pass, distance, alpha_test);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -599,6 +631,7 @@ void CDSGraphManager::add_Static(IRenderVisual* piVisual, CFrustum& frustum, u32
 				return;
 
 			RGraph.mapLOD.emplace_back(D, ssa, nullptr, pVisual, nullptr, nullptr, false);
+			m_static_seen.insert(pVisual);
 		}
 
 #if RENDER!=R_R1
@@ -711,6 +744,7 @@ void CDSGraphManager::add_Static_MultiFrustum(IRenderVisual* piVisual, const xr_
 				return;
 
 			RGraph.mapLOD.emplace_back(D, ssa, nullptr, pVisual, nullptr, nullptr, false);
+			m_static_seen.insert(pVisual);
 		}
 
 #if RENDER!=R_R1
@@ -761,6 +795,7 @@ void CDSGraphManager::add_leaf_Static(dxRender_Visual* pVisual)
 				break;
 
 			RGraph.mapLOD.emplace_back(D, ssa, nullptr, pVisual, nullptr, nullptr, false);
+			m_static_seen.insert(pVisual);
 		}
 
 #if RENDER!=R_R1

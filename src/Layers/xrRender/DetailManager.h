@@ -266,11 +266,13 @@ public:
 	void Load();
 	void Unload();
 	void Render();
+	bool GetVisibleBounds(Fbox& bounds);
 
 	/// MT stuff
 	u32 m_frame_calc;
 	xr_atomic_u32 m_frame_rendered;
 	xrCriticalSection m_mt_calc_guard;
+	Fbox m_visible_bounds;
 	void __stdcall MT_CALC();
 
 	CDetailManager();

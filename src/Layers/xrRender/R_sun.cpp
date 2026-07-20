@@ -39,6 +39,16 @@ Fvector3 wform(Fmatrix& m, Fvector3 const& v)
 	return r3;
 }
 
+static void add_shadow_receiver_bounds(Fbox2& receiver_bounds, const Fbox& world_bounds, const Fmatrix& shadow_xform)
+{
+	Fbox projected;
+	projected.xform(world_bounds, shadow_xform);
+	receiver_bounds.min.x = _min(receiver_bounds.min.x, projected.min.x);
+	receiver_bounds.min.y = _min(receiver_bounds.min.y, projected.min.y);
+	receiver_bounds.max.x = _max(receiver_bounds.max.x, projected.max.x);
+	receiver_bounds.max.y = _max(receiver_bounds.max.y, projected.max.y);
+}
+
 void CRender::init_cacades()
 {
 	u32 cascade_count = 3;
@@ -287,7 +297,95 @@ void CRender::render_sun_cascade(u32 cascade_ind)
     {
         PROF_EVENT("Render Cascade: SMAP traverse");
         phase = PHASE_SMAP;
+        cascade.GMCascade.set_shadow_receiver_bounds(nullptr);
         cascade.GMCascade.traverse(pOutdoorSector, cascade.cull_frustum, cascade.cull_COP, cascade.cull_xform);
+
+#if RENDER == R_R4
+		Fbox2 receiver_bounds;
+		receiver_bounds.invalidate();
+		bool receiver_bounds_valid = false;
+		bool outdoor_visible = false;
+		{
+			xrSRWLockGuard guard(&GMBase.S_LC, true);
+			if (pOutdoorSector)
+			{
+				if (auto node = GMBase.m_sector_frustums.find(pOutdoorSector))
+					outdoor_visible = !node->val.first.empty();
+			}
+
+			if (outdoor_visible)
+			{
+				for (dxRender_Visual* visual : GMBase.m_static_seen)
+				{
+					if (!visual)
+						continue;
+
+					add_shadow_receiver_bounds(receiver_bounds, visual->vis.box, cull_xform);
+					receiver_bounds_valid = true;
+				}
+			}
+			else
+			{
+				for (auto& pair : GMBase.m_sector_frustums)
+				{
+					if (pair.val.first.empty() || !pair.key || !pair.key->root())
+						continue;
+
+					add_shadow_receiver_bounds(receiver_bounds, pair.key->root()->vis.box, cull_xform);
+					receiver_bounds_valid = true;
+				}
+			}
+
+			for (const ISpatialShared& spatial : GMBase.lstRenderables)
+			{
+				if (!spatial || !(spatial->spatial.type & (STYPE_RENDERABLE | STYPE_PARTICLE)))
+					continue;
+
+				CSector* sector = static_cast<CSector*>(spatial->spatial.sector);
+				auto node = sector ? GMBase.m_sector_frustums.find(sector) : nullptr;
+				if (!node || node->val.first.empty())
+					continue;
+
+				const Fsphere& sphere = spatial->spatial.sphere;
+				Fvector radius;
+				radius.set(sphere.R, sphere.R, sphere.R);
+				Fbox world_bounds;
+				world_bounds.setb(sphere.P, radius);
+				add_shadow_receiver_bounds(receiver_bounds, world_bounds, cull_xform);
+				receiver_bounds_valid = true;
+			}
+		}
+
+		Fbox detail_bounds;
+		if (Details && Details->GetVisibleBounds(detail_bounds))
+		{
+			add_shadow_receiver_bounds(receiver_bounds, detail_bounds, cull_xform);
+			receiver_bounds_valid = true;
+		}
+
+		const bool volumetric_sunshafts_need_full_shadow =
+			cascade_ind == m_sun_cascades.size() - 1 &&
+			RImplementation.o.advancedpp &&
+			(ps_sunshafts_mode == R2SS_VOLUMETRIC || ps_sunshafts_mode == R2SS_COMBINE_SUNSHAFTS) &&
+			Target->need_to_render_sunshafts();
+		if (!volumetric_sunshafts_need_full_shadow && receiver_bounds_valid &&
+			receiver_bounds.max.x >= -1.f && receiver_bounds.max.y >= -1.f &&
+			receiver_bounds.min.x <= 1.f && receiver_bounds.min.y <= 1.f)
+		{
+			receiver_bounds.min.x = _max(receiver_bounds.min.x, -1.f);
+			receiver_bounds.min.y = _max(receiver_bounds.min.y, -1.f);
+			receiver_bounds.max.x = _min(receiver_bounds.max.x, 1.f);
+			receiver_bounds.max.y = _min(receiver_bounds.max.y, 1.f);
+			const float receiver_margin = _max(128.f / float(o.smapsize), 4.f / cascade.size);
+			receiver_bounds.grow(receiver_margin);
+			receiver_bounds.min.x = _max(receiver_bounds.min.x, -1.f);
+			receiver_bounds.min.y = _max(receiver_bounds.min.y, -1.f);
+			receiver_bounds.max.x = _min(receiver_bounds.max.x, 1.f);
+			receiver_bounds.max.y = _min(receiver_bounds.max.y, 1.f);
+			cascade.GMCascade.set_shadow_receiver_bounds(&receiver_bounds);
+		}
+#endif
+
         cascade.GMCascade.r_dsgraph_capture(false, true);
     }
 
@@ -308,7 +406,7 @@ void CRender::render_sun_cascade(u32 cascade_ind)
                 RCache.set_xform_world(Fidentity);
                 RCache.set_xform_view(Fidentity);
                 RCache.set_xform_project(fuckingsun->X.D.combine);
-                cascade.GMCascade.r_dsgraph_render_graph(0);
+                cascade.GMCascade.r_dsgraph_render_sun_shadow(0);
 
                 if (psDeviceFlags2.test(rsGrassShadow) && cascade_ind <= ps_ssfx_grass_shadows.x)
                 {

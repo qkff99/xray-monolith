@@ -42,6 +42,14 @@ public:
 	void set_RS(u32 a, u32 b);
 	void set_TSS(u32 a, u32 b, u32 c);
 	void set_SAMP(u32 a, u32 b, u32 c);
+	u32 get_RS(u32 state, u32 fallback) const
+	{
+		for (const State& value : States)
+			if (value.type == 0 && value.v1 == state)
+				return value.v2;
+
+		return fallback;
+	}
 	BOOL equal(SimulatorStates& S);
 	void clear();
 	IDirect3DStateBlock9* record();

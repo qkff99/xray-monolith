@@ -57,7 +57,8 @@ void CDSGraphManager::r_dsgraph_render_graph_sorted(R_dsgraph::mapDSGraphItems<T
 	RCache.set_xform_world(Fidentity);
 }
 
-void CDSGraphManager::r_dsgraph_render_graph(RenderQueueArray& queues, u32 _priority, bool _clear, bool static_geometry)
+void CDSGraphManager::r_dsgraph_render_graph(
+	RenderQueueArray& queues, u32 _priority, bool _clear, bool static_geometry, s32 alpha_test)
 {
 	RCache.set_xform_world(Fidentity);
 
@@ -68,10 +69,54 @@ void CDSGraphManager::r_dsgraph_render_graph(RenderQueueArray& queues, u32 _prio
 			continue;
 
 		// 1. Sort by generated sort key to replicate previous fixed map behaviour
-		if (queue.size() < 4096)
-            std::sort(queue.begin(), queue.end());
-		else
-            xr_parallel_sort(queue.begin(), queue.end());
+		if (alpha_test <= 0)
+		{
+			if (i_sun_shadow_order && i_alpha_depth_order && _priority == 0)
+			{
+				float min_depth = flt_max;
+				float max_depth = -flt_max;
+				for (const auto& packet : queue)
+				{
+					if (!packet.alphaTest)
+						continue;
+
+					float depth;
+					memcpy(&depth, &packet.item.sortKey, sizeof(depth));
+					min_depth = _min(min_depth, depth);
+					max_depth = _max(max_depth, depth);
+				}
+
+				if (min_depth <= max_depth)
+				{
+					const float range = max_depth - min_depth;
+					const float scale = range > EPS ? 15.999f / range : 0.f;
+					for (auto& packet : queue)
+					{
+						if (!packet.alphaTest)
+							continue;
+
+						float depth;
+						memcpy(&depth, &packet.item.sortKey, sizeof(depth));
+						packet.depthBucket = u8(_min(15.f, _max(0.f, (depth - min_depth) * scale)));
+					}
+				}
+			}
+
+			if (queue.size() < 4096)
+			{
+				if (i_alpha_depth_order && _priority == 0)
+					std::sort(queue.begin(), queue.end(), AlphaDepthRenderPacketLess{});
+				else
+					std::sort(queue.begin(), queue.end());
+			}
+			else
+			{
+				if (i_alpha_depth_order && _priority == 0)
+					xr_parallel_sort(queue.begin(), queue.end(), AlphaDepthRenderPacketLess{});
+				else
+					xr_parallel_sort(queue.begin(), queue.end());
+			}
+		}
 
 		// 2. Render
 		vs_type pVS = nullptr;
@@ -93,6 +138,9 @@ void CDSGraphManager::r_dsgraph_render_graph(RenderQueueArray& queues, u32 _prio
 
         for (auto& packet : queue)
         {
+			if (alpha_test >= 0 && packet.alphaTest != (alpha_test != 0))
+				continue;
+
             // Full pointer comparisons are required here: the packed sort key
             // deliberately truncates pointers and can collide.
             if (packet.pState != pState)
@@ -165,6 +213,20 @@ void CDSGraphManager::r_dsgraph_render_graph(RenderQueueArray& queues, u32 _prio
 		if (_clear)
 			queue.clear();
 	}
+}
+
+void CDSGraphManager::r_dsgraph_render_sun_shadow(u32 _priority)
+{
+	if (!i_sun_shadow_order)
+	{
+		r_dsgraph_render_graph(_priority);
+		return;
+	}
+
+	r_dsgraph_render_graph(RGraph.mapStaticPasses, _priority, false, true, 0);
+	r_dsgraph_render_graph(RGraph.mapDynamicPasses, _priority, false, false, 0);
+	r_dsgraph_render_graph(RGraph.mapStaticPasses, _priority, true, true, 1);
+	r_dsgraph_render_graph(RGraph.mapDynamicPasses, _priority, true, false, 1);
 }
 
 //////////////////////////////////////////////////////////////////////////
