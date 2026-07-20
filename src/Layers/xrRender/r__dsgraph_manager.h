@@ -24,7 +24,7 @@ public:
 	bool									i_sun_shadow_order;
 	bool									i_alpha_depth_order;
 	bool									i_shadow_receiver_clip = false;
-	Fbox2									i_shadow_receiver_bounds;
+	Fbox									i_shadow_receiver_bounds;
 	xrCriticalSection						P_CS;
 	xrSRWLock								S_LC;
 
@@ -43,7 +43,7 @@ public:
 	{
 		std::copy(mask, mask + 7, i_mask);
 	}
-	void set_shadow_receiver_bounds(const Fbox2* bounds)
+	void set_shadow_receiver_bounds(const Fbox* bounds)
 	{
 		i_shadow_receiver_clip = bounds != nullptr;
 		if (bounds)
@@ -59,7 +59,8 @@ public:
 		return projected.max.x >= i_shadow_receiver_bounds.min.x &&
 			projected.max.y >= i_shadow_receiver_bounds.min.y &&
 			projected.min.x <= i_shadow_receiver_bounds.max.x &&
-			projected.min.y <= i_shadow_receiver_bounds.max.y;
+			projected.min.y <= i_shadow_receiver_bounds.max.y &&
+			projected.min.z <= i_shadow_receiver_bounds.max.z;
 	}
 	void initialize();
 	void destroy();

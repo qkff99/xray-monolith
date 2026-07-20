@@ -39,14 +39,11 @@ Fvector3 wform(Fmatrix& m, Fvector3 const& v)
 	return r3;
 }
 
-static void add_shadow_receiver_bounds(Fbox2& receiver_bounds, const Fbox& world_bounds, const Fmatrix& shadow_xform)
+static void add_shadow_receiver_bounds(Fbox& receiver_bounds, const Fbox& world_bounds, const Fmatrix& shadow_xform)
 {
 	Fbox projected;
 	projected.xform(world_bounds, shadow_xform);
-	receiver_bounds.min.x = _min(receiver_bounds.min.x, projected.min.x);
-	receiver_bounds.min.y = _min(receiver_bounds.min.y, projected.min.y);
-	receiver_bounds.max.x = _max(receiver_bounds.max.x, projected.max.x);
-	receiver_bounds.max.y = _max(receiver_bounds.max.y, projected.max.y);
+	receiver_bounds.merge(projected);
 }
 
 void CRender::init_cacades()
@@ -301,7 +298,7 @@ void CRender::render_sun_cascade(u32 cascade_ind)
         cascade.GMCascade.traverse(pOutdoorSector, cascade.cull_frustum, cascade.cull_COP, cascade.cull_xform);
 
 #if RENDER == R_R4
-		Fbox2 receiver_bounds;
+		Fbox receiver_bounds;
 		receiver_bounds.invalidate();
 		bool receiver_bounds_valid = false;
 		bool outdoor_visible = false;
@@ -377,11 +374,18 @@ void CRender::render_sun_cascade(u32 cascade_ind)
 			receiver_bounds.max.x = _min(receiver_bounds.max.x, 1.f);
 			receiver_bounds.max.y = _min(receiver_bounds.max.y, 1.f);
 			const float receiver_margin = _max(128.f / float(o.smapsize), 4.f / cascade.size);
-			receiver_bounds.grow(receiver_margin);
+			receiver_bounds.min.x -= receiver_margin;
+			receiver_bounds.min.y -= receiver_margin;
+			receiver_bounds.max.x += receiver_margin;
+			receiver_bounds.max.y += receiver_margin;
 			receiver_bounds.min.x = _max(receiver_bounds.min.x, -1.f);
 			receiver_bounds.min.y = _max(receiver_bounds.min.y, -1.f);
 			receiver_bounds.max.x = _min(receiver_bounds.max.x, 1.f);
 			receiver_bounds.max.y = _min(receiver_bounds.max.y, 1.f);
+			Fvector depth_margin;
+			depth_margin.mul(fuckingsun->direction, 2.f);
+			cull_xform.transform_dir(depth_margin);
+			receiver_bounds.max.z += _abs(depth_margin.z);
 			cascade.GMCascade.set_shadow_receiver_bounds(&receiver_bounds);
 		}
 #endif
@@ -411,7 +415,9 @@ void CRender::render_sun_cascade(u32 cascade_ind)
                 if (psDeviceFlags2.test(rsGrassShadow) && cascade_ind <= ps_ssfx_grass_shadows.x)
                 {
                     Details->fade_distance = dm_fade * dm_fade * ps_ssfx_grass_shadows.y;
+                    Details->SetShadowCascade(&cascade.GMCascade);
                     Details->Render();
+                    Details->SetShadowCascade(nullptr);
                 }
 
                 fuckingsun->X.D.transluent = FALSE;

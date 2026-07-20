@@ -11,6 +11,8 @@
 #include "detailmodel.h"
 #include "light.h"
 
+class CDSGraphManager;
+
 #ifdef _EDITOR
 //.	#include	"ESceneClassList.h"
 	const int	dm_max_decompress	= 14;
@@ -68,8 +70,10 @@ public:
 
 	float fade_distance = 99999;
 	Fvector light_position;
+	const CDSGraphManager* shadow_cascade = nullptr;
 
 	void details_clear();
+	void SetShadowCascade(const CDSGraphManager* cascade) { shadow_cascade = cascade; }
 
 	struct SlotItem
 	{
@@ -89,6 +93,7 @@ public:
 		Fvector c_rgb;
 #endif
 	};
+	bool ShadowDetailVisible(const CDetail& object, const SlotItem& instance, float scale) const;
 
 	DEFINE_VECTOR(SlotItem*, SlotItemVec, SlotItemVecIt);
 

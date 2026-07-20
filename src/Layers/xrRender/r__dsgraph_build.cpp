@@ -386,9 +386,21 @@ void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
 			continue;
 
 		SPass& pass	= *sh->passes[iPass];
+		float pass_distance = render_distance;
+#if RENDER == R_R4
+		if (!sun_shadow_order && (i_options & VQ_SSA) &&
+			pass.state->state_code.get_RS(D3DRS_ALPHATESTENABLE, FALSE) != FALSE &&
+			pass.state->state_code.get_RS(D3DRS_ZWRITEENABLE, TRUE) != FALSE &&
+			pass.state->state_code.get_RS(D3DRS_ALPHABLENDENABLE, FALSE) == FALSE)
+		{
+			Fvector camera_to_center;
+			camera_to_center.sub(pVisual->vis.sphere.P, Device.vCameraPosition);
+			pass_distance = _max(0.f, camera_to_center.dotproduct(Device.vCameraDirection));
+		}
+#endif
 		AddToRenderQueue(RGraph.mapStaticPasses[shader_priority][iPass],
 			{ 0, SSA, nullptr, pVisual, nullptr, nullptr, false }, pass,
-			render_distance, alpha_depth_order);
+			pass_distance, alpha_depth_order);
 	}
 }
 

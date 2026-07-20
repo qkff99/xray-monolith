@@ -320,6 +320,9 @@ void CDetailManager::hw_Render_dump(const Fvector4& consts, const Fvector4& wave
 						if (scale <= 0 || Instance.alpha <= 0)
 							break;
 
+						if (!ShadowDetailVisible(Object, Instance, scale))
+							continue;
+
 						// Build matrix ( 3x4 matrix, last row - color )
 						Fmatrix& M = Instance.mRotY_calculated;
 						c_storage[base + 0].set(M._11 * scale, M._21 * scale, M._31 * scale, M._41);

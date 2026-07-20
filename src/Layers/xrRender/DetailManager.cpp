@@ -7,6 +7,7 @@
 
 #include "DetailManager.h"
 #include "cl_intersect.h"
+#include "r__dsgraph_manager.h"
 
 #include "../../xrCore/profiler.h"
 
@@ -25,6 +26,38 @@
 
 const float dbgOffset = 0.f;
 const int dbgItems = 128;
+
+bool CDetailManager::ShadowDetailVisible(const CDetail& object, const SlotItem& instance, float scale) const
+{
+#if RENDER == R_R4
+	if (!shadow_cascade || RImplementation.phase != CRender::PHASE_SMAP)
+		return true;
+
+	const Fmatrix& transform = instance.mRotY_calculated;
+	Fvector center;
+	transform.transform_dir(center, object.bv_sphere.P);
+	center.mul(scale);
+	center.x += transform._41;
+	center.y += transform._42;
+	center.z += transform._43;
+
+	const float basis_scale = _sqrt(_max(transform.i.square_magnitude(),
+		_max(transform.j.square_magnitude(), transform.k.square_magnitude())));
+	const float model_radius = object.bv_sphere.R * basis_scale;
+	const float wind_margin = _max(dm_slot_size, model_radius);
+	const float radius = model_radius * scale + wind_margin;
+	if (!shadow_cascade->i_frustum.testSphere_dirty(center, radius))
+		return false;
+
+	Fvector extent;
+	extent.set(radius, radius, radius);
+	Fbox bounds;
+	bounds.setb(center, extent);
+	return shadow_cascade->shadow_receiver_visible(bounds);
+#else
+	return true;
+#endif
+}
 
 //--------------------------------------------------- Decompression
 static int magic4x4[4][4] =
