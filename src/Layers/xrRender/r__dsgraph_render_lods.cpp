@@ -19,11 +19,14 @@ void CDSGraphManager::r_dsgraph_render_lods(bool _setup_zb, bool _clear)
 	if (RGraph.mapLOD.empty())
 		return;
 
-    static auto sortFuncReverse = [](const auto& a, const auto& b) { return b < a; };
-	if (_setup_zb)
-        std::sort(RGraph.mapLOD.begin(), RGraph.mapLOD.end());
-    else
-        std::sort(RGraph.mapLOD.begin(), RGraph.mapLOD.end(), sortFuncReverse);
+	if (RGraph.mapLOD.size() > 1)
+	{
+		static auto sortFuncReverse = [](const auto& a, const auto& b) { return b < a; };
+		if (_setup_zb)
+			std::sort(RGraph.mapLOD.begin(), RGraph.mapLOD.end());
+		else
+			std::sort(RGraph.mapLOD.begin(), RGraph.mapLOD.end(), sortFuncReverse);
+	}
 
 	// *** Fill VB and generate groups
 	u32 shid = _setup_zb ? SE_R1_LMODELS : SE_R1_NORMAL_LQ;

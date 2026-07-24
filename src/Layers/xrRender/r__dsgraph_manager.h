@@ -257,6 +257,16 @@ struct PortalTraverseDebugStats
 	u32 queue_static_packets_noopt = 0;
 	u32 queue_dynamic_packets_opt = 0;
 	u32 queue_dynamic_packets_noopt = 0;
+	u32 packet_sort_skipped = 0;
+	u32 packet_serial_sorts = 0;
+	u32 packet_parallel_sorts = 0;
+	u64 packet_serial_sort_items = 0;
+	u64 packet_parallel_sort_items = 0;
+	u64 packet_serial_sort_ticks = 0;
+	u64 packet_parallel_sort_ticks = 0;
+	u32 packet_sort_max_items = 0;
+	u32 packet_key_collisions = 0;
+	u32 packet_state_binds = 0;
 
 	u32 static_dedup_seen = 0;
 	u32 static_dedup_skipped = 0;

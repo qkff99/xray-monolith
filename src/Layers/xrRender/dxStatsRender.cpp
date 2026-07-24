@@ -54,6 +54,8 @@ void dxStatsRender::OutData4(CGameFont& F)
 		const float hom_mip_ms = 1000.f * float(double(hom_stats.mip_ticks) / double(CPU::qpc_freq));
 		const float portal_clip_ms = 1000.f * float(double(pstats.portal_clip_ticks) / double(CPU::qpc_freq));
 		const float portal_hom_ms = 1000.f * float(double(pstats.portal_hom_ticks) / double(CPU::qpc_freq));
+		const float packet_serial_sort_ms = 1000.f * float(double(pstats.packet_serial_sort_ticks) / double(CPU::qpc_freq));
+		const float packet_parallel_sort_ms = 1000.f * float(double(pstats.packet_parallel_sort_ticks) / double(CPU::qpc_freq));
 		const float scissor_coverage = pstats.scissor_sector_rects ?
 			float(double(pstats.scissor_area_ppm) / double(pstats.scissor_sector_rects) / 10000.0) : 100.f;
 		F.OutSkip();
@@ -99,6 +101,12 @@ void dxStatsRender::OutData4(CGameFont& F)
             pstats.dynamic_frustum_hits_noopt, pstats.dynamic_rendered, pstats.dynamic_rendered_opt, pstats.dynamic_rendered_noopt);
 		F.OutNext("submit: st[%u] o[%u] n[%u] dyn[%u] o[%u] n[%u]", pstats.queue_static_packets, pstats.queue_static_packets_opt,
             pstats.queue_static_packets_noopt, pstats.queue_dynamic_packets, pstats.queue_dynamic_packets_opt, pstats.queue_dynamic_packets_noopt);
+		F.OutNext("packet sort: serial[%u/%llu/%2.2fms] parallel[%u/%llu/%2.2fms] skip[%u] max[%u]",
+			pstats.packet_serial_sorts, pstats.packet_serial_sort_items, packet_serial_sort_ms,
+			pstats.packet_parallel_sorts, pstats.packet_parallel_sort_items, packet_parallel_sort_ms,
+			pstats.packet_sort_skipped, pstats.packet_sort_max_items);
+		F.OutNext("packet state: binds[%u] key-collisions[%u]", pstats.packet_state_binds,
+			pstats.packet_key_collisions);
         F.OutNext("dedup: seen[%u] o[%u] n[%u] skip[%u] o[%u] n[%u] fr[%u] tail[%u]", pstats.static_dedup_seen,
             pstats.static_dedup_seen_opt, pstats.static_dedup_seen_noopt, pstats.static_dedup_skipped,
             pstats.static_dedup_skipped_opt, pstats.static_dedup_skipped_noopt, pstats.static_frustum_tests,

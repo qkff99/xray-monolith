@@ -34,7 +34,8 @@ void CDSGraphManager::r_dsgraph_render_graph_sorted(R_dsgraph::mapDSGraphItems<T
     if (graph.empty())
         return;
 
-    std::sort(graph.begin(), graph.end());
+	if (graph.size() > 1)
+		std::sort(graph.begin(), graph.end());
 
 	for (auto& item : graph)
 	{
@@ -61,6 +62,7 @@ void CDSGraphManager::r_dsgraph_render_graph(
 	RenderQueueArray& queues, u32 _priority, bool _clear, bool static_geometry, s32 alpha_test)
 {
 	RCache.set_xform_world(Fidentity);
+	PortalTraverseDebugStats* dbg = PortalTraverseDbg_Enabled() ? &PortalTraverseDbg_Get() : nullptr;
 
 	for (u32 iPass = 0; iPass < SHADER_PASSES_MAX; ++iPass)
 	{
@@ -102,19 +104,73 @@ void CDSGraphManager::r_dsgraph_render_graph(
 				}
 			}
 
-			if (queue.size() < 4096)
+			if (dbg)
+				dbg->packet_sort_max_items = _max(dbg->packet_sort_max_items, queue.size());
+
+			if (queue.size() <= 1)
 			{
+				if (dbg)
+					++dbg->packet_sort_skipped;
+			}
+			else if (queue.size() < 4096)
+			{
+				const u64 started = dbg ? CPU::QPC() : 0;
 				if (i_alpha_depth_order && _priority == 0)
 					std::sort(queue.begin(), queue.end(), AlphaDepthRenderPacketLess{});
 				else
 					std::sort(queue.begin(), queue.end());
+				if (dbg)
+				{
+					u64 elapsed = CPU::QPC() - started;
+					if (elapsed > CPU::qpc_overhead)
+						elapsed -= CPU::qpc_overhead;
+					++dbg->packet_serial_sorts;
+					dbg->packet_serial_sort_items += queue.size();
+					dbg->packet_serial_sort_ticks += elapsed;
+				}
 			}
 			else
 			{
+				const u64 started = dbg ? CPU::QPC() : 0;
 				if (i_alpha_depth_order && _priority == 0)
 					xr_parallel_sort(queue.begin(), queue.end(), AlphaDepthRenderPacketLess{});
 				else
 					xr_parallel_sort(queue.begin(), queue.end());
+				if (dbg)
+				{
+					u64 elapsed = CPU::QPC() - started;
+					if (elapsed > CPU::qpc_overhead)
+						elapsed -= CPU::qpc_overhead;
+					++dbg->packet_parallel_sorts;
+					dbg->packet_parallel_sort_items += queue.size();
+					dbg->packet_parallel_sort_ticks += elapsed;
+				}
+			}
+
+			if (dbg && queue.size() > 1)
+			{
+				for (u32 packet_index = 1; packet_index < queue.size(); ++packet_index)
+				{
+					const RenderPacket& previous = queue[packet_index - 1];
+					const RenderPacket& current = queue[packet_index];
+					const bool out_of_order = i_alpha_depth_order && _priority == 0 ?
+						AlphaDepthRenderPacketLess{}(current, previous) : current < previous;
+					VERIFY(!out_of_order);
+					if (previous.sortKey != current.sortKey)
+						continue;
+
+					bool same_state = previous.pState == current.pState &&
+						previous.pVS == current.pVS && previous.pPS == current.pPS &&
+						previous.pCS == current.pCS && previous.pTextures == current.pTextures;
+#if defined(USE_DX10) || defined(USE_DX11)
+					same_state = same_state && previous.pGS == current.pGS;
+#endif
+#ifdef USE_DX11
+					same_state = same_state && previous.pHS == current.pHS && previous.pDS == current.pDS;
+#endif
+					if (!same_state)
+						++dbg->packet_key_collisions;
+				}
 			}
 		}
 
@@ -147,6 +203,8 @@ void CDSGraphManager::r_dsgraph_render_graph(
             {
                 pState = packet.pState;
                 RCache.set_States(pState);
+				if (dbg)
+					++dbg->packet_state_binds;
             }
 
 #if defined(USE_DX10) || defined(USE_DX11)
@@ -154,6 +212,8 @@ void CDSGraphManager::r_dsgraph_render_graph(
             {
                 pGS = packet.pGS;
                 RCache.set_GS(pGS);
+				if (dbg)
+					++dbg->packet_state_binds;
             }
 #endif
 
@@ -162,11 +222,15 @@ void CDSGraphManager::r_dsgraph_render_graph(
             {
                 pHS = packet.pHS;
                 RCache.set_HS(pHS);
+				if (dbg)
+					++dbg->packet_state_binds;
             }
             if (packet.pDS != pDS)
             {
                 pDS = packet.pDS;
                 RCache.set_DS(pDS);
+				if (dbg)
+					++dbg->packet_state_binds;
             }
 #endif
 
@@ -174,18 +238,24 @@ void CDSGraphManager::r_dsgraph_render_graph(
             {
                 pVS = packet.pVS;
                 RCache.set_VS(pVS);
+				if (dbg)
+					++dbg->packet_state_binds;
             }
 
             if (packet.pPS != pPS)
             {
                 pPS = packet.pPS;
                 RCache.set_PS(pPS);
+				if (dbg)
+					++dbg->packet_state_binds;
             }
 
             if (packet.pCS != pCS)
             {
                 pCS = packet.pCS;
                 RCache.set_Constants(pCS);
+				if (dbg)
+					++dbg->packet_state_binds;
             }
 
             if (packet.pTextures != pTextures)
@@ -193,6 +263,8 @@ void CDSGraphManager::r_dsgraph_render_graph(
                 pTextures = packet.pTextures;
                 RCache.set_Textures(pTextures);
                 RImplementation.apply_lmaterial();
+				if (dbg)
+					++dbg->packet_state_binds;
             }
 
 			auto& item = packet.item;
@@ -390,7 +462,8 @@ void CDSGraphManager::r_dsgraph_render_water_ssr()
 {
 #ifdef USE_DX11
 	PROF_EVENT("r_dsgraph_render_water_ssr");
-	std::sort(RGraph.mapWater.begin(), RGraph.mapWater.end());
+	if (RGraph.mapWater.size() > 1)
+		std::sort(RGraph.mapWater.begin(), RGraph.mapWater.end());
 	for (auto& N : RGraph.mapWater)
 	{
 		dxRender_Visual* V = N.pVisual;
@@ -416,7 +489,8 @@ void CDSGraphManager::r_dsgraph_render_water_ssr()
 void CDSGraphManager::r_dsgraph_render_water()
 {
 	PROF_EVENT("r_dsgraph_render_water_ssr");
-    std::sort(RGraph.mapWater.begin(), RGraph.mapWater.end());
+	if (RGraph.mapWater.size() > 1)
+		std::sort(RGraph.mapWater.begin(), RGraph.mapWater.end());
     for (auto& N : RGraph.mapWater)
 	{
 		dxRender_Visual* V = N.pVisual;
