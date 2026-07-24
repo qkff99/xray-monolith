@@ -346,6 +346,7 @@ void CDetailManager::UpdateVisibleM()
 	float fade_range = fade_limit - fade_start;
 	float r_ssaCHEAP = 16 * r_ssaDISCARD;
     float fade_start_ssa = r_ssaDISCARD * ps_r__ssaDISCARD_fade_k;
+	const bool no_scale_on_fade = psDeviceFlags2.test(rsNoScale);
 
 	// Initialize 'vis' and 'cache'
 	// Collect objects for rendering
@@ -436,10 +437,8 @@ void CDetailManager::UpdateVisibleM()
 						for (; siIT != siEND; siIT++)
 						{
 							SlotItem& Item = *(*siIT);
-							float scale = psDeviceFlags2.test(rsNoScale)
-								              ? (Item.scale)
-								              : (Item.scale * alpha_i);
-							float ssa = psDeviceFlags2.test(rsNoScale) ? scale : scale * scale * Rq_drcp;
+							float scale = no_scale_on_fade ? Item.scale : Item.scale * alpha_i;
+							float ssa = scale * scale * Rq_drcp;
 							if (ssa < r_ssaDISCARD)
 							{
 								Item.alpha_target = 0;
