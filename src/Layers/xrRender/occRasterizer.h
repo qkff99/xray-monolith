@@ -24,6 +24,13 @@ const float occQ_s32 = float(0x40000000); // [-2..2]
 const float occQ_s16 = float(16384 - 1); // [-2..2]
 typedef s32 occD;
 
+struct occRasterizerStats
+{
+	u32 tests;
+	u64 cells;
+	u64 ticks;
+};
+
 class occRasterizer
 {
 private:
@@ -34,6 +41,9 @@ private:
 	occD bufDepth_1 [occ_dim_1][occ_dim_1];
 	occD bufDepth_2 [occ_dim_2][occ_dim_2];
 	occD bufDepth_3 [occ_dim_3][occ_dim_3];
+	std::atomic_uint32_t stats_tests{0};
+	std::atomic_uint64_t stats_cells{0};
+	std::atomic_uint64_t stats_ticks{0};
 public:
 	IC int df_2_s32(float d) { return iFloor(d * occQ_s32); }
 	IC s16 df_2_s16(float d) { return s16(iFloor(d * occQ_s16)); }
@@ -46,6 +56,8 @@ public:
 	void propagade();
 	u32 rasterize(occTri* T);
 	BOOL test(float x0, float y0, float x1, float y1, float z);
+	void reset_stats();
+	occRasterizerStats get_stats() const;
 
 	occTri** get_frame() { return &(bufFrame[0][0]); }
 	float* get_depth() { return &(bufDepth[0][0]); }

@@ -558,6 +558,7 @@ void CDSGraphManager::r_dsgraph_capture_static()
 void CDSGraphManager::r_dsgraph_capture_lights()
 {
 	PROF_EVENT("r_dsgraph_capture_lights")
+	PortalTraverseDebugStats* dbg = PortalTraverseDbg_Enabled() ? &PortalTraverseDbg_Get() : nullptr;
 	g_SpatialSpaceLights->q_frustum
 	(
 		lstLights,
@@ -579,9 +580,19 @@ void CDSGraphManager::r_dsgraph_capture_lights()
 	{
 		if (0 == spatial) continue; spatial->spatial_updatesector();
 		CSector* sector = (CSector*)spatial->spatial.sector;
-		if (0 == sector) continue;
+		if (0 == sector)
+		{
+			if (dbg)
+				++dbg->culled_sector;
+			continue;
+		}
 
-		if (!RImplementation.HOM.visible(spatial->spatial.sphere)) continue;
+		if (!RImplementation.HOM.visible(spatial->spatial.sphere))
+		{
+			if (dbg)
+				++dbg->culled_hom;
+			continue;
+		}
 
 		if ((spatial->spatial.type & STYPE_LIGHTSOURCE))
 		{
@@ -682,10 +693,19 @@ void CDSGraphManager::r_dsgraph_capture_dynamic(CObject* O)
 				ISpatialShared spatial = lstRenderables[o_it];
 				if (0 == spatial) continue;
 				CSector* sector = (CSector*)spatial->spatial.sector;
-				if (0 == sector) continue;
+				if (0 == sector)
+				{
+					if (dbg)
+						++dbg->culled_sector;
+					continue;
+				}
 
 				if (i_mask[CDSGraphManager::fl_normal] && !RImplementation.HOM.visible(spatial->spatial.sphere))
+				{
+					if (dbg)
+						++dbg->culled_hom;
 					continue;
+				}
 
 #if	RENDER==R_R1
 				if ((spatial->spatial.type & STYPE_GLOW))
@@ -719,8 +739,13 @@ void CDSGraphManager::r_dsgraph_capture_dynamic(CObject* O)
 				if(!(spatial->spatial.type & STYPE_RENDERABLE) && !(spatial->spatial.type & STYPE_PARTICLE) && !(spatial->spatial.type & STYPE_RENDERABLESHADOW))
 					continue;
 				if (!is_sector_visible(sector))
+				{
+					if (dbg)
+						++dbg->culled_sector;
 					continue;
+				}
 
+				bool frustum_visible = false;
 				for (CFrustum& frustum : m_sector_frustums.find(sector)->val.first)
 				{
 					if (dbg)
@@ -734,6 +759,7 @@ void CDSGraphManager::r_dsgraph_capture_dynamic(CObject* O)
 
 					if (frustum.testSphere_dirty(spatial->spatial.sphere.P, spatial->spatial.sphere.R))
 					{
+						frustum_visible = true;
 						if (dbg)
 						{
 							++dbg->dynamic_frustum_hits;
@@ -776,6 +802,8 @@ void CDSGraphManager::r_dsgraph_capture_dynamic(CObject* O)
 						break;
 					}
 				}
+				if (dbg && !frustum_visible)
+					++dbg->culled_frustum;
 			}
 		}
 	}

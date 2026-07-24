@@ -41,7 +41,11 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
 		Fbox world_bounds;
 		world_bounds.xform(pVisual->vis.box, *xform);
 		if (!shadow_receiver_visible(world_bounds))
+		{
+			if (PortalTraverseDbg_Enabled())
+				++PortalTraverseDbg_Get().culled_shadow_receiver;
 			return;
+		}
 	}
 
 	float distSQ;
@@ -50,11 +54,12 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
     ShaderElement* sh_d = &*pVisual->shader->E[4];
     if (!(flags.test(IRenderVisualFlags::eIgnoreOptimization) || (sh_d && sh_d->flags.bEmissive)))
     {
-        if (SSA < r_ssaDISCARD)
-        {
-            //Msg("SSA %.2f discarded", SSA);
-            return;
-        }
+		if (SSA < r_ssaDISCARD)
+		{
+			if (PortalTraverseDbg_Enabled())
+				++PortalTraverseDbg_Get().culled_ssa;
+			return;
+		}
     }
     
 
@@ -65,11 +70,15 @@ void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix
         if (i_mask[CDSGraphManager::fl_normal])
 #endif
         {
-            Fbox world_bb;
-            world_bb.xform(pVisual->vis.box, *xform);
-            if (!RImplementation.HOM.visible(world_bb))
-                return;
-        }
+			Fbox world_bb;
+			world_bb.xform(pVisual->vis.box, *xform);
+			if (!RImplementation.HOM.visible(world_bb))
+			{
+				if (PortalTraverseDbg_Enabled())
+					++PortalTraverseDbg_Get().culled_hom;
+				return;
+			}
+		}
     }
 
 	// Distortive geometry should be marked and R2 special-cases it
@@ -258,7 +267,11 @@ extern float ps_r__ssaDISCARD_fade_k;
 void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
 {
 	if (!shadow_receiver_visible(pVisual->vis.box))
+	{
+		if (PortalTraverseDbg_Enabled())
+			++PortalTraverseDbg_Get().culled_shadow_receiver;
 		return;
+	}
 
 	if (m_static_seen.find(pVisual) != m_static_seen.end())
 	{
@@ -292,8 +305,12 @@ void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
     ShaderElement* sh_d = &*pVisual->shader->E[4];
     if (!(flags.test(IRenderVisualFlags::eIgnoreOptimization) || (sh_d && sh_d->flags.bEmissive)))
     {
-        if (SSA < r_ssaDISCARD)
-            return;
+		if (SSA < r_ssaDISCARD)
+		{
+			if (PortalTraverseDbg_Enabled())
+				++PortalTraverseDbg_Get().culled_ssa;
+			return;
+		}
 
         // demonized: Replace hard cutoff with gradient cutoff
         // Smaller objects that fail the SSA test will still render depending on how much smaller they are than the discard limit.
@@ -316,8 +333,12 @@ void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
             float val = hash * hash_to_float;
 
             // If the object's hash value is higher than its survival chance, cull it
-            if (val > _powf(survival_chance, ps_r__ssaDISCARD_exp))
-                return;
+			if (val > _powf(survival_chance, ps_r__ssaDISCARD_exp))
+			{
+				if (PortalTraverseDbg_Enabled())
+					++PortalTraverseDbg_Get().culled_ssa;
+				return;
+			}
         }
     }
 
@@ -607,13 +628,21 @@ void CDSGraphManager::add_Static(IRenderVisual* piVisual, CFrustum& frustum, u32
 	EFC_Visible VIS = frustum.testSAABB(vis.sphere.P, vis.sphere.R, vis.box.data(), planes);
 
 	if (fcvNone == VIS)
+	{
+		if (PortalTraverseDbg_Enabled())
+			++PortalTraverseDbg_Get().culled_frustum;
 		return;
+	}
 
 #if RENDER!=R_R1
 	if (i_mask[CDSGraphManager::fl_normal])//phase normal
 #endif
 		if (!RImplementation.HOM.visible(vis))
+		{
+			if (PortalTraverseDbg_Enabled())
+				++PortalTraverseDbg_Get().culled_hom;
 			return;
+		}
 
 	// If we get here visual is visible or partially visible
 	switch (pVisual->Type)
@@ -640,7 +669,11 @@ void CDSGraphManager::add_Static(IRenderVisual* piVisual, CFrustum& frustum, u32
 		if (ssa < r_ssaLOD_A)
 		{
 			if (ssa < r_ssaDISCARD)
+			{
+				if (PortalTraverseDbg_Enabled())
+					++PortalTraverseDbg_Get().culled_ssa;
 				return;
+			}
 
 			RGraph.mapLOD.emplace_back(D, ssa, nullptr, pVisual, nullptr, nullptr, false);
 			m_static_seen.insert(pVisual);
@@ -721,13 +754,21 @@ void CDSGraphManager::add_Static_MultiFrustum(IRenderVisual* piVisual, const xr_
 	}
 
 	if (!anyVisible)
+	{
+		if (PortalTraverseDbg_Enabled())
+			++PortalTraverseDbg_Get().culled_frustum;
 		return;
+	}
 
 #if RENDER!=R_R1
 	if (i_mask[CDSGraphManager::fl_normal])//phase normal
 #endif
 		if (!RImplementation.HOM.visible(vis))
+		{
+			if (PortalTraverseDbg_Enabled())
+				++PortalTraverseDbg_Get().culled_hom;
 			return;
+		}
 
 	// If we get here visual is visible in at least one frustum
 	switch (pVisual->Type)
@@ -753,7 +794,11 @@ void CDSGraphManager::add_Static_MultiFrustum(IRenderVisual* piVisual, const xr_
 		if (ssa < r_ssaLOD_A)
 		{
 			if (ssa < r_ssaDISCARD)
+			{
+				if (PortalTraverseDbg_Enabled())
+					++PortalTraverseDbg_Get().culled_ssa;
 				return;
+			}
 
 			RGraph.mapLOD.emplace_back(D, ssa, nullptr, pVisual, nullptr, nullptr, false);
 			m_static_seen.insert(pVisual);
@@ -784,7 +829,11 @@ void CDSGraphManager::add_leaf_Static(dxRender_Visual* pVisual)
 	if (i_mask[CDSGraphManager::fl_normal])//phase normal
 #endif
 		if (!RImplementation.HOM.visible(pVisual->vis))
+		{
+			if (PortalTraverseDbg_Enabled())
+				++PortalTraverseDbg_Get().culled_hom;
 			return;
+		}
 
 	// Visual is 100% visible - simply add it
 	switch (pVisual->Type)
@@ -804,7 +853,11 @@ void CDSGraphManager::add_leaf_Static(dxRender_Visual* pVisual)
 		if (ssa < r_ssaLOD_A)
 		{
 			if (ssa < r_ssaDISCARD)
+			{
+				if (PortalTraverseDbg_Enabled())
+					++PortalTraverseDbg_Get().culled_ssa;
 				break;
+			}
 
 			RGraph.mapLOD.emplace_back(D, ssa, nullptr, pVisual, nullptr, nullptr, false);
 			m_static_seen.insert(pVisual);

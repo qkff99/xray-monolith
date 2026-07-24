@@ -10,6 +10,7 @@
 #include "../../xrCore/profiler.h"
 
 #include "dxRenderDeviceRender.h"
+#include "xrRender_console.h"
 
 float psOSSR = .001f;
 
@@ -278,6 +279,8 @@ void CHOM::Render_DB(CFrustum& base)
 
 void CHOM::Render(CFrustum& base)
 {
+	if (ps_r__portal_traverse_stats)
+		Raster.reset_stats();
 	if (!bEnabled) return;
 
 	Device.Statistic->RenderCALC_HOM.Begin();
@@ -366,9 +369,6 @@ BOOL CHOM::visible(vis_data& vis)
 	// 2. New object slides into view								- delay test| frame-old, tested-old, hom_res = ???;
 	// u32	frame_prev		= frame_current-1;
 
-#ifdef DEBUG
-	Device.Statistic->RenderCALC_HOM.Begin	();
-#endif
 	BOOL result = _visible(vis.box, m_xform_01);
 	u32 delay = 1;
 	if (result)
@@ -382,10 +382,6 @@ BOOL CHOM::visible(vis_data& vis)
 	}
 	vis.hom_frame = frame_current + delay;
 	vis.hom_tested = frame_current;
-#ifdef DEBUG
-	Device.Statistic->RenderCALC_HOM.End	();
-#endif
-
 	return result;
 }
 

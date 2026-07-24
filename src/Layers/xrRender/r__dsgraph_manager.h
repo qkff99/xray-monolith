@@ -232,6 +232,12 @@ struct PortalTraverseDebugStats
 	u32 static_dedup_skipped_opt = 0;
 	u32 static_dedup_skipped_noopt = 0;
 
+	u32 culled_frustum = 0;
+	u32 culled_hom = 0;
+	u32 culled_ssa = 0;
+	u32 culled_sector = 0;
+	u32 culled_shadow_receiver = 0;
+
 	void reset(u32 frame)
 	{
 		*this = {};

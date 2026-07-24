@@ -4,10 +4,10 @@
 
 #include "stdafx.h"
 #include "occRasterizer.h"
+#include "xrRender_console.h"
 
 #if DEBUG
 #include "dxRenderDeviceRender.h"
-#include "xrRender_console.h"
 #endif
 
 occRasterizer Raster;
@@ -197,12 +197,13 @@ void occRasterizer::on_dbg_render()
 }
 
 
-IC BOOL test_Level(occD* depth, int dim, float _x0, float _y0, float _x1, float _y1, occD z)
+IC BOOL test_Level(occD* depth, int dim, float _x0, float _y0, float _x1, float _y1, occD z, u32* tested_cells)
 {
 	int x0 = iFloor(_x0 * dim + .5f); clamp(x0, 0, dim - 1);
 	int x1 = iFloor(_x1 * dim + .5f); clamp(x1, x0, dim - 1);
 	int y0 = iFloor(_y0 * dim + .5f); clamp(y0, 0, dim - 1);
 	int y1 = iFloor(_y1 * dim + .5f); clamp(y1, y0, dim - 1);
+	const u32 row_width = u32(x1 - x0 + 1);
 
 	for (int y = y0; y <= y1; y++)
 	{
@@ -210,8 +211,15 @@ IC BOOL test_Level(occD* depth, int dim, float _x0, float _y0, float _x1, float 
 		occD* it = base + x0;
 		occD* end = base + x1;
 		for (; it <= end; it++)
-			if (z < *it) return TRUE;
+			if (z < *it)
+			{
+				if (tested_cells)
+					*tested_cells = u32(y - y0) * row_width + u32(it - (base + x0)) + 1;
+				return TRUE;
+			}
 	}
+	if (tested_cells)
+		*tested_cells = u32(y1 - y0 + 1) * row_width;
 	return FALSE;
 }
 
@@ -219,13 +227,43 @@ IC BOOL test_Level(occD* depth, int dim, float _x0, float _y0, float _x1, float 
 BOOL occRasterizer::test(float _x0, float _y0, float _x1, float _y1, float _z)
 {
 	occD z = df_2_s32up(_z) + 1;
-	return test_Level(get_depth_level(0), occ_dim_0, _x0, _y0, _x1, _y1, z);
+	if (!ps_r__portal_traverse_stats)
+		return test_Level(get_depth_level(0), occ_dim_0, _x0, _y0, _x1, _y1, z, nullptr);
+
+	u32 tested_cells = 0;
+	const u64 started = CPU::QPC();
+	const BOOL result = test_Level(get_depth_level(0), occ_dim_0, _x0, _y0, _x1, _y1, z, &tested_cells);
+	u64 elapsed = CPU::QPC() - started;
+	if (elapsed > CPU::qpc_overhead)
+		elapsed -= CPU::qpc_overhead;
+
+	stats_tests.fetch_add(1, std::memory_order_relaxed);
+	stats_cells.fetch_add(tested_cells, std::memory_order_relaxed);
+	stats_ticks.fetch_add(elapsed, std::memory_order_relaxed);
+	return result;
 	/*
-	if	(test_Level(get_depth_level(2),occ_dim_2,_x0,_y0,_x1,_y1,z))
+	if	(test_Level(get_depth_level(2),occ_dim_2,_x0,_y0,_x1,_y1,z,nullptr))
 	{
 		// Visbible on level 2 - test level 0
-		return test_Level(get_depth_level(0),occ_dim_0,_x0,_y0,_x1,_y1,z);
+		return test_Level(get_depth_level(0),occ_dim_0,_x0,_y0,_x1,_y1,z,nullptr);
 	}
 	return FALSE;
 	*/
+}
+
+void occRasterizer::reset_stats()
+{
+	stats_tests.store(0, std::memory_order_relaxed);
+	stats_cells.store(0, std::memory_order_relaxed);
+	stats_ticks.store(0, std::memory_order_relaxed);
+}
+
+occRasterizerStats occRasterizer::get_stats() const
+{
+	return
+	{
+		stats_tests.load(std::memory_order_relaxed),
+		stats_cells.load(std::memory_order_relaxed),
+		stats_ticks.load(std::memory_order_relaxed)
+	};
 }

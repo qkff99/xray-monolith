@@ -2,6 +2,7 @@
 #include "dxStatsRender.h"
 #include "../../xrEngine/GameFont.h"
 #include "dxRenderDeviceRender.h"
+#include "occRasterizer.h"
 
 void dxStatsRender::Copy(IStatsRender& _in)
 {
@@ -44,12 +45,18 @@ void dxStatsRender::OutData4(CGameFont& F)
 	F.OutNext("  dynamic_4B:  %3.1f/%d", RCache.stat.r.s_dynamic_4B.verts / 1024.f, RCache.stat.r.s_dynamic_4B.dips);
 	F.OutNext("details:       %3.1f/%d", RCache.stat.r.s_details.verts / 1024.f, RCache.stat.r.s_details.dips);
 
-    if (ps_r__portal_traverse_stats)
-    {
-        const PortalTraverseDebugStats& pstats = PortalTraverseDbg_Peek();
-        F.OutSkip();
-        F.OutNext(" **** Portal Traverse (%u) **** ", pstats.frame_id);
-        F.OutNext("trv: all[%u] opt[%u] noopt[%u]", pstats.traverse_calls, pstats.traverse_calls_with_options, pstats.traverse_calls_without_options);
+	if (ps_r__portal_traverse_stats)
+	{
+		const PortalTraverseDebugStats& pstats = PortalTraverseDbg_Peek();
+		const occRasterizerStats hom_stats = Raster.get_stats();
+		const float hom_test_ms = 1000.f * float(double(hom_stats.ticks) / double(CPU::qpc_freq));
+		F.OutSkip();
+		F.OutNext(" **** Visibility (%u) **** ", pstats.frame_id);
+		F.OutNext("HOM: build[%2.2fms] test[%2.2fms/%u] cells[%llu/%llu]", Device.Statistic->RenderCALC_HOM.result,
+			hom_test_ms, hom_stats.tests, hom_stats.cells, hom_stats.tests ? hom_stats.cells / hom_stats.tests : 0);
+		F.OutNext("cull: fr[%u] hom[%u] ssa[%u] sec[%u] shrecv[%u]", pstats.culled_frustum, pstats.culled_hom,
+			pstats.culled_ssa, pstats.culled_sector, pstats.culled_shadow_receiver);
+		F.OutNext("trv: all[%u] opt[%u] noopt[%u]", pstats.traverse_calls, pstats.traverse_calls_with_options, pstats.traverse_calls_without_options);
         F.OutNext("frustum: push[%u] o[%u] n[%u] max[%u] o[%u] n[%u]", pstats.frustums_pushed, pstats.frustums_pushed_opt,
             pstats.frustums_pushed_noopt, pstats.max_frustums_in_sector, pstats.max_frustums_in_sector_opt, pstats.max_frustums_in_sector_noopt);
         F.OutNext("portal: chk[%u] o[%u] n[%u] rec[%u] o[%u] n[%u]", pstats.portals_checked, pstats.portals_checked_opt,
@@ -65,7 +72,7 @@ void dxStatsRender::OutData4(CGameFont& F)
             pstats.dynamic_spatials_noopt, pstats.dynamic_frustum_tests, pstats.dynamic_frustum_tests_opt, pstats.dynamic_frustum_tests_noopt);
         F.OutNext("dynamic: hit[%u] o[%u] n[%u] rnd[%u] o[%u] n[%u]", pstats.dynamic_frustum_hits, pstats.dynamic_frustum_hits_opt,
             pstats.dynamic_frustum_hits_noopt, pstats.dynamic_rendered, pstats.dynamic_rendered_opt, pstats.dynamic_rendered_noopt);
-        F.OutNext("queue: st[%u] o[%u] n[%u] dyn[%u] o[%u] n[%u]", pstats.queue_static_packets, pstats.queue_static_packets_opt,
+		F.OutNext("submit: st[%u] o[%u] n[%u] dyn[%u] o[%u] n[%u]", pstats.queue_static_packets, pstats.queue_static_packets_opt,
             pstats.queue_static_packets_noopt, pstats.queue_dynamic_packets, pstats.queue_dynamic_packets_opt, pstats.queue_dynamic_packets_noopt);
         F.OutNext("dedup: seen[%u] o[%u] n[%u] skip[%u] o[%u] n[%u]", pstats.static_dedup_seen, pstats.static_dedup_seen_opt,
             pstats.static_dedup_seen_noopt, pstats.static_dedup_skipped, pstats.static_dedup_skipped_opt, pstats.static_dedup_skipped_noopt);
