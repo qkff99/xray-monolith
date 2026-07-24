@@ -197,12 +197,49 @@ void occRasterizer::on_dbg_render()
 }
 
 
-IC BOOL test_Level(occD* depth, int dim, float _x0, float _y0, float _x1, float _y1, occD z, u32* tested_cells)
+struct occTestBounds
 {
-	int x0 = iFloor(_x0 * dim + .5f); clamp(x0, 0, dim - 1);
-	int x1 = iFloor(_x1 * dim + .5f); clamp(x1, x0, dim - 1);
-	int y0 = iFloor(_y0 * dim + .5f); clamp(y0, 0, dim - 1);
-	int y1 = iFloor(_y1 * dim + .5f); clamp(y1, y0, dim - 1);
+	int x0;
+	int y0;
+	int x1;
+	int y1;
+};
+
+struct occHierarchyTestResult
+{
+	BOOL visible;
+	u32 cells;
+	u32 start_mip;
+	BOOL coarse_reject;
+	BOOL level0_fallback;
+};
+
+IC occTestBounds get_test_bounds(float _x0, float _y0, float _x1, float _y1)
+{
+	occTestBounds bounds;
+	bounds.x0 = iFloor(_x0 * occ_dim_0 + .5f); clamp(bounds.x0, 0, occ_dim_0 - 1);
+	bounds.x1 = iFloor(_x1 * occ_dim_0 + .5f); clamp(bounds.x1, bounds.x0, occ_dim_0 - 1);
+	bounds.y0 = iFloor(_y0 * occ_dim_0 + .5f); clamp(bounds.y0, 0, occ_dim_0 - 1);
+	bounds.y1 = iFloor(_y1 * occ_dim_0 + .5f); clamp(bounds.y1, bounds.y0, occ_dim_0 - 1);
+	return bounds;
+}
+
+IC int select_start_mip(const occTestBounds& bounds)
+{
+	const int span_x = bounds.x1 - bounds.x0 + 1;
+	const int span_y = bounds.y1 - bounds.y0 + 1;
+	int span = span_x > span_y ? span_x : span_y;
+	int level = 0;
+	while (level < 3 && span > 4)
+	{
+		span = (span + 1) / 2;
+		++level;
+	}
+	return level;
+}
+
+IC BOOL test_Level(occD* depth, int dim, int x0, int y0, int x1, int y1, occD z, u32* tested_cells)
+{
 	const u32 row_width = u32(x1 - x0 + 1);
 
 	for (int y = y0; y <= y1; y++)
@@ -223,32 +260,84 @@ IC BOOL test_Level(occD* depth, int dim, float _x0, float _y0, float _x1, float 
 	return FALSE;
 }
 
+static occHierarchyTestResult test_hierarchy(occRasterizer& raster, const occTestBounds& bounds, occD z, bool collect_stats)
+{
+	occHierarchyTestResult result = {};
+	result.start_mip = select_start_mip(bounds);
+
+	for (int level = int(result.start_mip); level >= 0; --level)
+	{
+		if (level == 0 && result.start_mip > 0)
+			result.level0_fallback = TRUE;
+
+		u32 level_cells = 0;
+		const BOOL visible = test_Level(raster.get_depth_level(level), occ_dim_0 >> level,
+			bounds.x0 >> level, bounds.y0 >> level, bounds.x1 >> level, bounds.y1 >> level, z,
+			collect_stats ? &level_cells : nullptr);
+		result.cells += level_cells;
+		if (!visible)
+		{
+			result.coarse_reject = level > 0;
+			return result;
+		}
+	}
+
+	result.visible = TRUE;
+	return result;
+}
+
 
 BOOL occRasterizer::test(float _x0, float _y0, float _x1, float _y1, float _z)
 {
-	occD z = df_2_s32up(_z) + 1;
-	if (!ps_r__portal_traverse_stats)
-		return test_Level(get_depth_level(0), occ_dim_0, _x0, _y0, _x1, _y1, z, nullptr);
+	const occD z = df_2_s32up(_z) + 1;
+	const occTestBounds bounds = get_test_bounds(_x0, _y0, _x1, _y1);
+	const bool collect_stats = !!ps_r__portal_traverse_stats;
+	const u64 started = collect_stats ? CPU::QPC() : 0;
+	occHierarchyTestResult hierarchy = {};
+	u32 legacy_cells = 0;
+	BOOL result;
 
-	u32 tested_cells = 0;
-	const u64 started = CPU::QPC();
-	const BOOL result = test_Level(get_depth_level(0), occ_dim_0, _x0, _y0, _x1, _y1, z, &tested_cells);
+	if (ps_r__hom_hierarchy == 0)
+	{
+		hierarchy.start_mip = 0;
+		result = test_Level(get_depth_level(0), occ_dim_0, bounds.x0, bounds.y0, bounds.x1, bounds.y1, z,
+			collect_stats ? &hierarchy.cells : nullptr);
+	}
+	else
+	{
+		hierarchy = test_hierarchy(*this, bounds, z, collect_stats);
+		result = hierarchy.visible;
+		if (ps_r__hom_hierarchy == 2)
+			result = test_Level(get_depth_level(0), occ_dim_0, bounds.x0, bounds.y0, bounds.x1, bounds.y1, z,
+				collect_stats ? &legacy_cells : nullptr);
+	}
+
+	if (!collect_stats)
+		return result;
+
 	u64 elapsed = CPU::QPC() - started;
 	if (elapsed > CPU::qpc_overhead)
 		elapsed -= CPU::qpc_overhead;
 
 	stats_tests.fetch_add(1, std::memory_order_relaxed);
-	stats_cells.fetch_add(tested_cells, std::memory_order_relaxed);
+	stats_cells.fetch_add(hierarchy.cells, std::memory_order_relaxed);
 	stats_ticks.fetch_add(elapsed, std::memory_order_relaxed);
-	return result;
-	/*
-	if	(test_Level(get_depth_level(2),occ_dim_2,_x0,_y0,_x1,_y1,z,nullptr))
+	stats_start_mip[hierarchy.start_mip].fetch_add(1, std::memory_order_relaxed);
+	if (hierarchy.coarse_reject)
+		stats_coarse_rejects.fetch_add(1, std::memory_order_relaxed);
+	if (hierarchy.level0_fallback)
+		stats_level0_fallbacks.fetch_add(1, std::memory_order_relaxed);
+	if (ps_r__hom_hierarchy == 2)
 	{
-		// Visbible on level 2 - test level 0
-		return test_Level(get_depth_level(0),occ_dim_0,_x0,_y0,_x1,_y1,z,nullptr);
+		stats_legacy_cells.fetch_add(legacy_cells, std::memory_order_relaxed);
+		if (hierarchy.visible != result)
+		{
+			stats_mismatches.fetch_add(1, std::memory_order_relaxed);
+			if (!hierarchy.visible && result)
+				stats_false_hidden.fetch_add(1, std::memory_order_relaxed);
+		}
 	}
-	return FALSE;
-	*/
+	return result;
 }
 
 void occRasterizer::reset_stats()
@@ -256,14 +345,27 @@ void occRasterizer::reset_stats()
 	stats_tests.store(0, std::memory_order_relaxed);
 	stats_cells.store(0, std::memory_order_relaxed);
 	stats_ticks.store(0, std::memory_order_relaxed);
+	for (auto& mip : stats_start_mip)
+		mip.store(0, std::memory_order_relaxed);
+	stats_coarse_rejects.store(0, std::memory_order_relaxed);
+	stats_level0_fallbacks.store(0, std::memory_order_relaxed);
+	stats_mismatches.store(0, std::memory_order_relaxed);
+	stats_false_hidden.store(0, std::memory_order_relaxed);
+	stats_legacy_cells.store(0, std::memory_order_relaxed);
 }
 
 occRasterizerStats occRasterizer::get_stats() const
 {
-	return
-	{
-		stats_tests.load(std::memory_order_relaxed),
-		stats_cells.load(std::memory_order_relaxed),
-		stats_ticks.load(std::memory_order_relaxed)
-	};
+	occRasterizerStats result = {};
+	result.tests = stats_tests.load(std::memory_order_relaxed);
+	result.cells = stats_cells.load(std::memory_order_relaxed);
+	result.ticks = stats_ticks.load(std::memory_order_relaxed);
+	for (u32 level = 0; level < 4; ++level)
+		result.start_mip[level] = stats_start_mip[level].load(std::memory_order_relaxed);
+	result.coarse_rejects = stats_coarse_rejects.load(std::memory_order_relaxed);
+	result.level0_fallbacks = stats_level0_fallbacks.load(std::memory_order_relaxed);
+	result.mismatches = stats_mismatches.load(std::memory_order_relaxed);
+	result.false_hidden = stats_false_hidden.load(std::memory_order_relaxed);
+	result.legacy_cells = stats_legacy_cells.load(std::memory_order_relaxed);
+	return result;
 }

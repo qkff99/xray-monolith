@@ -29,6 +29,12 @@ struct occRasterizerStats
 	u32 tests;
 	u64 cells;
 	u64 ticks;
+	u32 start_mip[4];
+	u32 coarse_rejects;
+	u32 level0_fallbacks;
+	u32 mismatches;
+	u32 false_hidden;
+	u64 legacy_cells;
 };
 
 class occRasterizer
@@ -44,6 +50,12 @@ private:
 	std::atomic_uint32_t stats_tests{0};
 	std::atomic_uint64_t stats_cells{0};
 	std::atomic_uint64_t stats_ticks{0};
+	std::atomic_uint32_t stats_start_mip[4]{};
+	std::atomic_uint32_t stats_coarse_rejects{0};
+	std::atomic_uint32_t stats_level0_fallbacks{0};
+	std::atomic_uint32_t stats_mismatches{0};
+	std::atomic_uint32_t stats_false_hidden{0};
+	std::atomic_uint64_t stats_legacy_cells{0};
 public:
 	IC int df_2_s32(float d) { return iFloor(d * occQ_s32); }
 	IC s16 df_2_s16(float d) { return s16(iFloor(d * occQ_s16)); }

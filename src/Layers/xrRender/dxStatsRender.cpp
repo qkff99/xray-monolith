@@ -54,6 +54,12 @@ void dxStatsRender::OutData4(CGameFont& F)
 		F.OutNext(" **** Visibility (%u) **** ", pstats.frame_id);
 		F.OutNext("HOM: build[%2.2fms] test[%2.2fms/%u] cells[%llu/%llu]", Device.Statistic->RenderCALC_HOM.result,
 			hom_test_ms, hom_stats.tests, hom_stats.cells, hom_stats.tests ? hom_stats.cells / hom_stats.tests : 0);
+		F.OutNext("HOM L%d: mip[%u/%u/%u/%u] reject[%u] l0[%u]", ps_r__hom_hierarchy, hom_stats.start_mip[0],
+			hom_stats.start_mip[1], hom_stats.start_mip[2], hom_stats.start_mip[3], hom_stats.coarse_rejects,
+			hom_stats.level0_fallbacks);
+		if (ps_r__hom_hierarchy == 2)
+			F.OutNext("HOM compare: diff[%u] false-hidden[%u] legacy-cells[%llu]", hom_stats.mismatches,
+				hom_stats.false_hidden, hom_stats.legacy_cells);
 		F.OutNext("cull: fr[%u] hom[%u] ssa[%u] sec[%u] shrecv[%u]", pstats.culled_frustum, pstats.culled_hom,
 			pstats.culled_ssa, pstats.culled_sector, pstats.culled_shadow_receiver);
 		F.OutNext("trv: all[%u] opt[%u] noopt[%u]", pstats.traverse_calls, pstats.traverse_calls_with_options, pstats.traverse_calls_without_options);
