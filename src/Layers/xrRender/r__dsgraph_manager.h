@@ -204,6 +204,8 @@ struct PortalTraverseDebugStats
 	u32 static_frustum_nodes_noopt = 0;
 	u32 static_add_root_calls_opt = 0;
 	u32 static_add_root_calls_noopt = 0;
+	u32 static_frustum_tests = 0;
+	u32 static_frustum_tail_skipped = 0;
 
 	u32 dynamic_spatials = 0;
 	u32 dynamic_frustum_tests = 0;

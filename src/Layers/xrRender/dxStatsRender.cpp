@@ -80,8 +80,10 @@ void dxStatsRender::OutData4(CGameFont& F)
             pstats.dynamic_frustum_hits_noopt, pstats.dynamic_rendered, pstats.dynamic_rendered_opt, pstats.dynamic_rendered_noopt);
 		F.OutNext("submit: st[%u] o[%u] n[%u] dyn[%u] o[%u] n[%u]", pstats.queue_static_packets, pstats.queue_static_packets_opt,
             pstats.queue_static_packets_noopt, pstats.queue_dynamic_packets, pstats.queue_dynamic_packets_opt, pstats.queue_dynamic_packets_noopt);
-        F.OutNext("dedup: seen[%u] o[%u] n[%u] skip[%u] o[%u] n[%u]", pstats.static_dedup_seen, pstats.static_dedup_seen_opt,
-            pstats.static_dedup_seen_noopt, pstats.static_dedup_skipped, pstats.static_dedup_skipped_opt, pstats.static_dedup_skipped_noopt);
+        F.OutNext("dedup: seen[%u] o[%u] n[%u] skip[%u] o[%u] n[%u] fr[%u] tail[%u]", pstats.static_dedup_seen,
+            pstats.static_dedup_seen_opt, pstats.static_dedup_seen_noopt, pstats.static_dedup_skipped,
+            pstats.static_dedup_skipped_opt, pstats.static_dedup_skipped_noopt, pstats.static_frustum_tests,
+            pstats.static_frustum_tail_skipped);
     }
 }
 

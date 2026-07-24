@@ -625,6 +625,8 @@ void CDSGraphManager::add_Static(IRenderVisual* piVisual, CFrustum& frustum, u32
 
 	// Check frustum visibility and calculate distance to visual's center
 	vis_data& vis = pVisual->vis;
+	if (PortalTraverseDbg_Enabled())
+		++PortalTraverseDbg_Get().static_frustum_tests;
 	EFC_Visible VIS = frustum.testSAABB(vis.sphere.P, vis.sphere.R, vis.box.data(), planes);
 
 	if (fcvNone == VIS)
@@ -710,6 +712,7 @@ void CDSGraphManager::add_Static_MultiFrustum(IRenderVisual* piVisual, const xr_
 	Flags16& flags = piVisual->flags;
 	if (!i_mask[CDSGraphManager::fl_normal] && !!flags.test(IRenderVisualFlags::eNoShadow))
 		return;
+	PortalTraverseDebugStats* dbg = PortalTraverseDbg_Enabled() ? &PortalTraverseDbg_Get() : nullptr;
 
 	// Check visibility against all active frustums and propagate per-frustum masks.
 	vis_data& vis = pVisual->vis;
@@ -730,9 +733,13 @@ void CDSGraphManager::add_Static_MultiFrustum(IRenderVisual* piVisual, const xr_
 			anyVisible = true;
 			hasFullyVisibleFrustum = true;
 			childMasks[i] = FULLY_VISIBLE_MASK;
-			continue;
+			if (dbg)
+				dbg->static_frustum_tail_skipped += u32(masks.size() - i - 1);
+			break;
 		}
 
+		if (dbg)
+			++dbg->static_frustum_tests;
 		EFC_Visible VIS = frustums[i].testSAABB(vis.sphere.P, vis.sphere.R, vis.box.data(), planeMask);
 		if (VIS == fcvNone)
 		{
@@ -746,6 +753,9 @@ void CDSGraphManager::add_Static_MultiFrustum(IRenderVisual* piVisual, const xr_
 			// Preserve union semantics by marking this frustum as fully visible.
 			hasFullyVisibleFrustum = true;
 			childMasks[i] = FULLY_VISIBLE_MASK;
+			if (dbg)
+				dbg->static_frustum_tail_skipped += u32(masks.size() - i - 1);
+			break;
 		}
 		else
 		{
@@ -755,8 +765,8 @@ void CDSGraphManager::add_Static_MultiFrustum(IRenderVisual* piVisual, const xr_
 
 	if (!anyVisible)
 	{
-		if (PortalTraverseDbg_Enabled())
-			++PortalTraverseDbg_Get().culled_frustum;
+		if (dbg)
+			++dbg->culled_frustum;
 		return;
 	}
 
@@ -765,8 +775,8 @@ void CDSGraphManager::add_Static_MultiFrustum(IRenderVisual* piVisual, const xr_
 #endif
 		if (!RImplementation.HOM.visible(vis))
 		{
-			if (PortalTraverseDbg_Enabled())
-				++PortalTraverseDbg_Get().culled_hom;
+			if (dbg)
+				++dbg->culled_hom;
 			return;
 		}
 
