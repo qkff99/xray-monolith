@@ -5,6 +5,7 @@
 #include "stdafx.h"
 #include "occRasterizer.h"
 #include "xrRender_console.h"
+#include <emmintrin.h>
 
 #if DEBUG
 #include "dxRenderDeviceRender.h"
@@ -23,28 +24,62 @@ void __stdcall fillDW_8x(void* _p, u32 size, u32 value)
 	}
 }
 
-IC void propagade_depth(LPVOID p_dest, LPVOID p_src, int dim)
+IC __m128i max_s32(__m128i left, __m128i right)
 {
-	occD* dest = (occD*)p_dest;
-	occD* src = (occD*)p_src;
+	const __m128i mask = _mm_cmpgt_epi32(left, right);
+	return _mm_or_si128(_mm_and_si128(mask, left), _mm_andnot_si128(mask, right));
+}
 
+IC void propagade_depth(occD* dest, const occD* src, int dim)
+{
 	for (int y = 0; y < dim; y++)
 	{
-		for (int x = 0; x < dim; x++)
+		const occD* row0 = src + y * 2 * dim * 2;
+		const occD* row1 = row0 + dim * 2;
+		occD* output = dest + y * dim;
+		for (int x = 0; x < dim; x += 4)
 		{
-			occD* base0 = src + (y * 2 + 0) * (dim * 2) + (x * 2);
-			occD* base1 = src + (y * 2 + 1) * (dim * 2) + (x * 2);
-			occD f1 = base0[0];
-			occD f2 = base0[1];
-			occD f3 = base1[0];
-			occD f4 = base1[1];
-			occD f = f1;
-			if (f2 > f) f = f2;
-			if (f3 > f) f = f3;
-			if (f4 > f) f = f4;
-			dest[y * dim + x] = f;
+			const int source_x = x * 2;
+			__m128i first = max_s32(
+				_mm_loadu_si128((const __m128i*)(row0 + source_x)),
+				_mm_loadu_si128((const __m128i*)(row1 + source_x)));
+			__m128i second = max_s32(
+				_mm_loadu_si128((const __m128i*)(row0 + source_x + 4)),
+				_mm_loadu_si128((const __m128i*)(row1 + source_x + 4)));
+
+			first = max_s32(first, _mm_shuffle_epi32(first, _MM_SHUFFLE(2, 3, 0, 1)));
+			second = max_s32(second, _mm_shuffle_epi32(second, _MM_SHUFFLE(2, 3, 0, 1)));
+			first = _mm_shuffle_epi32(first, _MM_SHUFFLE(2, 0, 2, 0));
+			second = _mm_shuffle_epi32(second, _MM_SHUFFLE(2, 0, 2, 0));
+			_mm_storeu_si128((__m128i*)(output + x), _mm_unpacklo_epi64(first, second));
 		}
 	}
+}
+
+static bool validate_propagade_depth()
+{
+	constexpr int source_dim = 8;
+	constexpr int dest_dim = source_dim / 2;
+	occD source[source_dim * source_dim];
+	occD dest[dest_dim * dest_dim];
+	for (int i = 0; i < source_dim * source_dim; ++i)
+		source[i] = (i & 1) ? -i * 7 : i * 11;
+
+	propagade_depth(dest, source, dest_dim);
+	for (int y = 0; y < dest_dim; ++y)
+	{
+		for (int x = 0; x < dest_dim; ++x)
+		{
+			const int source_x = x * 2;
+			const occD* row0 = source + y * 2 * source_dim;
+			const occD* row1 = row0 + source_dim;
+			const occD expected = _max(_max(row0[source_x], row0[source_x + 1]),
+				_max(row1[source_x], row1[source_x + 1]));
+			if (dest[y * dest_dim + x] != expected)
+				return false;
+		}
+	}
+	return true;
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -64,10 +99,17 @@ occRasterizer::~occRasterizer()
 
 void occRasterizer::clear()
 {
-	u32 size = occ_dim * occ_dim;
-	float f = 1.f;
-	Memory.mem_fill32(bufFrame, 0, size * (sizeof(void*) / 4));
-	Memory.mem_fill32(bufDepth, *LPDWORD(&f), size);
+	const bool collect_stats = !!ps_r__portal_traverse_stats;
+	const u64 started = collect_stats ? CPU::QPC() : 0;
+	std::fill_n(&bufFrame[0][0], occ_dim * occ_dim, nullptr);
+	std::fill_n(&bufDepth[0][0], occ_dim * occ_dim, 1.f);
+	if (collect_stats)
+	{
+		u64 elapsed = CPU::QPC() - started;
+		if (elapsed > CPU::qpc_overhead)
+			elapsed -= CPU::qpc_overhead;
+		stats_clear_ticks.store(elapsed, std::memory_order_relaxed);
+	}
 }
 
 IC BOOL shared(occTri* T1, occTri* T2)
@@ -133,9 +175,19 @@ void occRasterizer::propagade()
 	}
 
 	// Propagate other levels
-	propagade_depth(bufDepth_1, bufDepth_0, occ_dim_1);
-	propagade_depth(bufDepth_2, bufDepth_1, occ_dim_2);
-	propagade_depth(bufDepth_3, bufDepth_2, occ_dim_3);
+	const bool collect_stats = !!ps_r__portal_traverse_stats;
+	const u64 started = collect_stats ? CPU::QPC() : 0;
+	propagade_depth(&bufDepth_1[0][0], &bufDepth_0[0][0], occ_dim_1);
+	propagade_depth(&bufDepth_2[0][0], &bufDepth_1[0][0], occ_dim_2);
+	propagade_depth(&bufDepth_3[0][0], &bufDepth_2[0][0], occ_dim_3);
+	if (collect_stats)
+	{
+		u64 elapsed = CPU::QPC() - started;
+		if (elapsed > CPU::qpc_overhead)
+			elapsed -= CPU::qpc_overhead;
+		stats_mip_ticks.store(elapsed, std::memory_order_relaxed);
+		stats_mip_validation_failures.store(validate_propagade_depth() ? 0 : 1, std::memory_order_relaxed);
+	}
 }
 
 void occRasterizer::on_dbg_render()
@@ -345,6 +397,9 @@ void occRasterizer::reset_stats()
 	stats_tests.store(0, std::memory_order_relaxed);
 	stats_cells.store(0, std::memory_order_relaxed);
 	stats_ticks.store(0, std::memory_order_relaxed);
+	stats_clear_ticks.store(0, std::memory_order_relaxed);
+	stats_mip_ticks.store(0, std::memory_order_relaxed);
+	stats_mip_validation_failures.store(0, std::memory_order_relaxed);
 	for (auto& mip : stats_start_mip)
 		mip.store(0, std::memory_order_relaxed);
 	stats_coarse_rejects.store(0, std::memory_order_relaxed);
@@ -360,6 +415,9 @@ occRasterizerStats occRasterizer::get_stats() const
 	result.tests = stats_tests.load(std::memory_order_relaxed);
 	result.cells = stats_cells.load(std::memory_order_relaxed);
 	result.ticks = stats_ticks.load(std::memory_order_relaxed);
+	result.clear_ticks = stats_clear_ticks.load(std::memory_order_relaxed);
+	result.mip_ticks = stats_mip_ticks.load(std::memory_order_relaxed);
+	result.mip_validation_failures = stats_mip_validation_failures.load(std::memory_order_relaxed);
 	for (u32 level = 0; level < 4; ++level)
 		result.start_mip[level] = stats_start_mip[level].load(std::memory_order_relaxed);
 	result.coarse_rejects = stats_coarse_rejects.load(std::memory_order_relaxed);

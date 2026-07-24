@@ -50,6 +50,8 @@ void dxStatsRender::OutData4(CGameFont& F)
 		const PortalTraverseDebugStats& pstats = PortalTraverseDbg_Peek();
 		const occRasterizerStats hom_stats = Raster.get_stats();
 		const float hom_test_ms = 1000.f * float(double(hom_stats.ticks) / double(CPU::qpc_freq));
+		const float hom_clear_ms = 1000.f * float(double(hom_stats.clear_ticks) / double(CPU::qpc_freq));
+		const float hom_mip_ms = 1000.f * float(double(hom_stats.mip_ticks) / double(CPU::qpc_freq));
 		const float portal_clip_ms = 1000.f * float(double(pstats.portal_clip_ticks) / double(CPU::qpc_freq));
 		const float portal_hom_ms = 1000.f * float(double(pstats.portal_hom_ticks) / double(CPU::qpc_freq));
 		const float scissor_coverage = pstats.scissor_sector_rects ?
@@ -58,6 +60,8 @@ void dxStatsRender::OutData4(CGameFont& F)
 		F.OutNext(" **** Visibility (%u) **** ", pstats.frame_id);
 		F.OutNext("HOM: build[%2.2fms] test[%2.2fms/%u] cells[%llu/%llu]", Device.Statistic->RenderCALC_HOM.result,
 			hom_test_ms, hom_stats.tests, hom_stats.cells, hom_stats.tests ? hom_stats.cells / hom_stats.tests : 0);
+		F.OutNext("HOM build: clear[%2.3fms] mip[%2.3fms] simd-diff[%u]", hom_clear_ms, hom_mip_ms,
+			hom_stats.mip_validation_failures);
 		F.OutNext("HOM L%d: mip[%u/%u/%u/%u] reject[%u] l0[%u]", ps_r__hom_hierarchy, hom_stats.start_mip[0],
 			hom_stats.start_mip[1], hom_stats.start_mip[2], hom_stats.start_mip[3], hom_stats.coarse_rejects,
 			hom_stats.level0_fallbacks);

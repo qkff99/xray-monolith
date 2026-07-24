@@ -29,6 +29,9 @@ struct occRasterizerStats
 	u32 tests;
 	u64 cells;
 	u64 ticks;
+	u64 clear_ticks;
+	u64 mip_ticks;
+	u32 mip_validation_failures;
 	u32 start_mip[4];
 	u32 coarse_rejects;
 	u32 level0_fallbacks;
@@ -50,6 +53,9 @@ private:
 	std::atomic_uint32_t stats_tests{0};
 	std::atomic_uint64_t stats_cells{0};
 	std::atomic_uint64_t stats_ticks{0};
+	std::atomic_uint64_t stats_clear_ticks{0};
+	std::atomic_uint64_t stats_mip_ticks{0};
+	std::atomic_uint32_t stats_mip_validation_failures{0};
 	std::atomic_uint32_t stats_start_mip[4]{};
 	std::atomic_uint32_t stats_coarse_rejects{0};
 	std::atomic_uint32_t stats_level0_fallbacks{0};
