@@ -38,6 +38,91 @@ const PortalTraverseDebugStats& PortalTraverseDbg_Peek()
 	return g_portal_traverse_dbg_stats;
 }
 
+void CDSGraphManager::track_sector_scissor_debug(CSector* sector, const sPoly& poly)
+{
+	// Render packets currently lose sector identity during global state sorting,
+	// so this remains main-view feasibility telemetry rather than GPU state.
+	if (!PortalTraverseDbg_Enabled() || !PortalTraverseDbg_IsOptions(i_options) || !sector)
+		return;
+
+	PortalTraverseDebugStats& dbg = PortalTraverseDbg_Get();
+	++dbg.scissor_candidates;
+
+	Fbox2 bounds;
+	bounds.invalidate();
+	bool full_screen = poly.empty();
+	for (const Fvector& point : poly)
+	{
+		Fvector4 projected;
+		i_mXFORM.transform(projected, point);
+		if (projected.w <= EPS_L)
+		{
+			full_screen = true;
+			break;
+		}
+
+		const float inverse_w = 1.f / projected.w;
+		const float depth = projected.z * inverse_w;
+		if (depth <= EPS_L)
+		{
+			full_screen = true;
+			break;
+		}
+
+		Fvector2 screen;
+		screen.set(
+			clampr((projected.x * inverse_w + 1.f) * .5f, 0.f, 1.f),
+			clampr((1.f - projected.y * inverse_w) * .5f, 0.f, 1.f));
+		bounds.modify(screen);
+	}
+
+	if (!full_screen && (bounds.min.x >= bounds.max.x || bounds.min.y >= bounds.max.y))
+		full_screen = true;
+
+	auto item = std::find_if(m_sector_scissors_debug.begin(), m_sector_scissors_debug.end(),
+		[sector](const SectorScissorDebugData& value) { return value.sector == sector; });
+	if (item == m_sector_scissors_debug.end())
+	{
+		SectorScissorDebugData value;
+		value.sector = sector;
+		value.bounds.invalidate();
+		m_sector_scissors_debug.push_back(value);
+		item = m_sector_scissors_debug.end() - 1;
+	}
+
+	if (full_screen)
+	{
+		++dbg.scissor_near_fallbacks;
+		item->full_screen = true;
+		item->bounds.set(0.f, 0.f, 1.f, 1.f);
+	}
+	else if (!item->full_screen)
+	{
+		item->bounds.merge(bounds);
+	}
+}
+
+void CDSGraphManager::finish_sector_scissor_debug()
+{
+	if (!PortalTraverseDbg_Enabled())
+		return;
+
+	PortalTraverseDebugStats& dbg = PortalTraverseDbg_Get();
+	dbg.scissor_sector_rects += u32(m_sector_scissors_debug.size());
+	for (const SectorScissorDebugData& value : m_sector_scissors_debug)
+	{
+		float area = 1.f;
+		if (!value.full_screen)
+		{
+			++dbg.scissor_restricted_sectors;
+			area = clampr((value.bounds.max.x - value.bounds.min.x) *
+				(value.bounds.max.y - value.bounds.min.y), 0.f, 1.f);
+		}
+
+		dbg.scissor_area_ppm += u64(area * 1000000.f + .5f);
+	}
+}
+
 void CDSGraphManager::traverse(CSector* start, CFrustum& F, Fvector& vBase, Fmatrix& mXFORM)
 {
 	if (!start) return;
@@ -67,7 +152,9 @@ void CDSGraphManager::traverse(CSector* start, CFrustum& F, Fvector& vBase, Fmat
 	// frames create empty-frustum entries and skew static capture decisions.
 	m_sector_frustums.clear();
 	m_static_seen.clear();
+	m_sector_scissors_debug.clear();
 	i_start->traverse(std::move(F),*this);
+	finish_sector_scissor_debug();
 }
 
 void CDSGraphManager::set_Object(IRenderable* O)

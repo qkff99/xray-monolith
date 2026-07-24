@@ -50,6 +50,10 @@ void dxStatsRender::OutData4(CGameFont& F)
 		const PortalTraverseDebugStats& pstats = PortalTraverseDbg_Peek();
 		const occRasterizerStats hom_stats = Raster.get_stats();
 		const float hom_test_ms = 1000.f * float(double(hom_stats.ticks) / double(CPU::qpc_freq));
+		const float portal_clip_ms = 1000.f * float(double(pstats.portal_clip_ticks) / double(CPU::qpc_freq));
+		const float portal_hom_ms = 1000.f * float(double(pstats.portal_hom_ticks) / double(CPU::qpc_freq));
+		const float scissor_coverage = pstats.scissor_sector_rects ?
+			float(double(pstats.scissor_area_ppm) / double(pstats.scissor_sector_rects) / 10000.0) : 100.f;
 		F.OutSkip();
 		F.OutNext(" **** Visibility (%u) **** ", pstats.frame_id);
 		F.OutNext("HOM: build[%2.2fms] test[%2.2fms/%u] cells[%llu/%llu]", Device.Statistic->RenderCALC_HOM.result,
@@ -73,7 +77,15 @@ void dxStatsRender::OutData4(CGameFont& F)
         F.OutNext("portal: visSkip[%u]", pstats.portals_skipped_already_visited);
         F.OutNext("rej: sph[%u] sec[%u] ssa[%u] clip[%u] hom[%u]", pstats.portals_rejected_sphere, pstats.portals_rejected_sector,
             pstats.portals_rejected_ssa, pstats.portals_rejected_clip, pstats.portals_rejected_hom);
-        F.OutNext("dbg branch: taken[%u] precedence[%u]", pstats.portals_debug_branch_taken, pstats.portals_debug_branch_precedence_hits);
+		F.OutNext("portal work: clip[%u/%2.2fms] hom[%u/%2.2fms]", pstats.portal_clip_tests, portal_clip_ms,
+			pstats.portal_hom_tests, portal_hom_ms);
+		F.OutNext("portal dedup: cmp[%u] exact[%u]", pstats.frustum_duplicate_comparisons,
+			pstats.frustums_skipped_exact_duplicate);
+		F.OutNext("portal debug: taken[%u] fixed-precedence[%u]", pstats.portals_debug_branch_taken,
+			pstats.portals_debug_branch_precedence_hits);
+		F.OutNext("scissor diag: candidates[%u] fallback[%u] restricted[%u/%u] cover[%2.1f%%]",
+			pstats.scissor_candidates, pstats.scissor_near_fallbacks, pstats.scissor_restricted_sectors,
+			pstats.scissor_sector_rects, scissor_coverage);
         F.OutNext("static: sec[%u] o[%u] n[%u] fr[%u] o[%u] n[%u] root[%u] o[%u] n[%u]", pstats.static_sector_nodes,
             pstats.static_sector_nodes_opt, pstats.static_sector_nodes_noopt, pstats.static_frustum_nodes, pstats.static_frustum_nodes_opt,
             pstats.static_frustum_nodes_noopt, pstats.static_add_root_calls, pstats.static_add_root_calls_opt, pstats.static_add_root_calls_noopt);

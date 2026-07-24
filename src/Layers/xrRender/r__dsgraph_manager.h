@@ -7,6 +7,13 @@
 class CDSGraphManager : public IDSGraphManager
 {
 public:
+	struct SectorScissorDebugData
+	{
+		CSector* sector = nullptr;
+		Fbox2 bounds;
+		bool full_screen = false;
+	};
+
 	enum
 	{
 		VQ_HOM = (1 << 0),
@@ -29,6 +36,7 @@ public:
 	xrSRWLock								S_LC;
 
 	FixedMAP<CSector*, std::pair<xr_vector<CFrustum>, FixedSet<CPortal*>>>		m_sector_frustums;
+	xr_vector<SectorScissorDebugData>		m_sector_scissors_debug;
 	xr_unordered_flat_set<dxRender_Visual*>				m_static_seen;
 	xr_vector<ISpatialShared>				lstRenderables, lstLights;
 	FixedMAP<CPortal*, float>				f_portals;
@@ -74,6 +82,8 @@ public:
 	void initialize();
 	void destroy();
 	void traverse(CSector* start, CFrustum& F, Fvector& vBase, Fmatrix& mXFORM);
+	void track_sector_scissor_debug(CSector* sector, const sPoly& poly);
+	void finish_sector_scissor_debug();
 	IC bool is_sector_visible(CSector* sector)
 	{
 		if (sector == i_start) return true;
@@ -171,6 +181,7 @@ public:
 		lstLights.clear();
 		f_portals.clear();
 		m_static_seen.clear();
+		m_sector_scissors_debug.clear();
 	}
 };
 
@@ -203,6 +214,17 @@ struct PortalTraverseDebugStats
 
 	u32 portals_debug_branch_taken = 0;
 	u32 portals_debug_branch_precedence_hits = 0;
+	u32 frustum_duplicate_comparisons = 0;
+	u32 frustums_skipped_exact_duplicate = 0;
+	u32 portal_clip_tests = 0;
+	u64 portal_clip_ticks = 0;
+	u32 portal_hom_tests = 0;
+	u64 portal_hom_ticks = 0;
+	u32 scissor_candidates = 0;
+	u32 scissor_near_fallbacks = 0;
+	u32 scissor_sector_rects = 0;
+	u32 scissor_restricted_sectors = 0;
+	u64 scissor_area_ppm = 0;
 
 	u32 static_sector_nodes = 0;
 	u32 static_frustum_nodes = 0;

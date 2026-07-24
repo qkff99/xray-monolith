@@ -57,6 +57,24 @@ CSector::~CSector()
 //
 extern float r_ssaDISCARD;
 extern float r_ssaLOD_A, r_ssaLOD_B;
+
+static bool IsSameFrustum(const CFrustum& left, const CFrustum& right)
+{
+	if (left.p_count != right.p_count)
+		return false;
+
+	for (int i = 0; i < left.p_count; ++i)
+	{
+		const CFrustum::fplane& left_plane = left.planes[i];
+		const CFrustum::fplane& right_plane = right.planes[i];
+		if (left_plane.n.x != right_plane.n.x || left_plane.n.y != right_plane.n.y ||
+			left_plane.n.z != right_plane.n.z || left_plane.d != right_plane.d)
+			return false;
+	}
+
+	return true;
+}
+
 IC CFrustum CreateFrustumFromPortal(sPoly* poly, Fvector& vBase, Fmatrix& mFullXFORM)
 {
 	CFrustum F;
@@ -115,6 +133,17 @@ void CSector::traverse(CFrustum &&F, CDSGraphManager& DM)
 
 	// Register traversal process
 	auto SNODE = DM.m_sector_frustums.insert(this);
+	for (const CFrustum& existing : SNODE->val.first)
+	{
+		if (dbg)
+			++dbg->frustum_duplicate_comparisons;
+		if (IsSameFrustum(existing, F))
+		{
+			if (dbg)
+				++dbg->frustums_skipped_exact_duplicate;
+			return;
+		}
+	}
     SNODE->val.first.push_back(F);
 	if (dbg)
 	{
@@ -188,7 +217,18 @@ void CSector::traverse(CFrustum &&F, CDSGraphManager& DM)
 			continue;
 		}
 
-		if (DM.i_options & CDSGraphManager::VQ_FADE | CDSGraphManager::VQ_SSA && psDeviceFlags.test(rsDrawPortals))
+		const bool render_portals = psDeviceFlags.test(rsDrawPortals);
+		const bool render_portal_debug = render_portals &&
+			(DM.i_options & (CDSGraphManager::VQ_FADE | CDSGraphManager::VQ_SSA));
+		if (dbg)
+		{
+			if (render_portal_debug)
+				++dbg->portals_debug_branch_taken;
+			else if (render_portals)
+				++dbg->portals_debug_branch_precedence_hits;
+		}
+
+		if (render_portal_debug)
 			DM.fade_portal(PORTAL, 1.f);
 		else
 		{
@@ -225,7 +265,13 @@ void CSector::traverse(CFrustum &&F, CDSGraphManager& DM)
 		DM.S.clear();
 		DM.S.assign(&*POLY.begin(), POLY.size());
 		DM.D.clear();
+		const u64 clip_started = dbg ? CPU::QPC() : 0;
 		sPoly* P = F.ClipPoly(DM.S, DM.D);
+		if (dbg)
+		{
+			++dbg->portal_clip_tests;
+			dbg->portal_clip_ticks += CPU::QPC() - clip_started;
+		}
 
 		if (0 == P)
 		{
@@ -235,7 +281,18 @@ void CSector::traverse(CFrustum &&F, CDSGraphManager& DM)
 		}
 
 		// Cull by HOM (slower algo)
-		if ((DM.i_options & CDSGraphManager::VQ_HOM) && !RImplementation.HOM.visible(*P))
+		bool hom_visible = true;
+		if (DM.i_options & CDSGraphManager::VQ_HOM)
+		{
+			const u64 hom_started = dbg ? CPU::QPC() : 0;
+			hom_visible = !!RImplementation.HOM.visible(*P);
+			if (dbg)
+			{
+				++dbg->portal_hom_tests;
+				dbg->portal_hom_ticks += CPU::QPC() - hom_started;
+			}
+		}
+		if (!hom_visible)
 		{
 			if (dbg)
 				++dbg->portals_rejected_hom;
@@ -244,6 +301,9 @@ void CSector::traverse(CFrustum &&F, CDSGraphManager& DM)
 
 		if (pSector)
 		{
+			if (dbg)
+				DM.track_sector_scissor_debug(pSector, *P);
+
 			// Create _new_ frustum and recurse
 			SNODE->val.second.insert(PORTAL);
 			if (dbg)
