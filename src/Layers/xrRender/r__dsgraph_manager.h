@@ -62,6 +62,15 @@ public:
 			projected.min.y <= i_shadow_receiver_bounds.max.y &&
 			projected.min.z <= i_shadow_receiver_bounds.max.z;
 	}
+	bool shadow_receiver_visible(const Fbox& local_bounds, const Fmatrix& world_xform) const
+	{
+		if (!i_shadow_receiver_clip)
+			return true;
+
+		Fbox world_bounds;
+		world_bounds.xform(local_bounds, world_xform);
+		return shadow_receiver_visible(world_bounds);
+	}
 	void initialize();
 	void destroy();
 	void traverse(CSector* start, CFrustum& F, Fvector& vBase, Fmatrix& mXFORM);
@@ -239,6 +248,11 @@ struct PortalTraverseDebugStats
 	u32 culled_ssa = 0;
 	u32 culled_sector = 0;
 	u32 culled_shadow_receiver = 0;
+	u32 culled_shadow_receiver_static = 0;
+	u32 culled_shadow_receiver_dynamic = 0;
+	u32 culled_shadow_details = 0;
+	u32 shadow_sun_draw_calls = 0;
+	u32 shadow_local_draw_calls = 0;
 
 	void reset(u32 frame)
 	{

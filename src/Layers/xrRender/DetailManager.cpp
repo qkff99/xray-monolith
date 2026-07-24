@@ -47,13 +47,20 @@ bool CDetailManager::ShadowDetailVisible(const CDetail& object, const SlotItem& 
 	const float wind_margin = _max(dm_slot_size, model_radius);
 	const float radius = model_radius * scale + wind_margin;
 	if (!shadow_cascade->i_frustum.testSphere_dirty(center, radius))
+	{
+		if (PortalTraverseDbg_Enabled())
+			++PortalTraverseDbg_Get().culled_shadow_details;
 		return false;
+	}
 
 	Fvector extent;
 	extent.set(radius, radius, radius);
 	Fbox bounds;
 	bounds.setb(center, extent);
-	return shadow_cascade->shadow_receiver_visible(bounds);
+	const bool visible = shadow_cascade->shadow_receiver_visible(bounds);
+	if (!visible && PortalTraverseDbg_Enabled())
+		++PortalTraverseDbg_Get().culled_shadow_details;
+	return visible;
 #else
 	return true;
 #endif

@@ -52,6 +52,7 @@ IC void hud_light_restore(xr_map<light*, std::pair<Fvector, Fvector>>& saved_pos
 void CRender::render_lights(light_Package& LP)
 {
 	xr_map<light*, std::pair<Fvector, Fvector>> saved_pos;
+	const bool shadow_stats_enabled = PortalTraverseDbg_Enabled();
 	stats.ls_shadowed_in += (u32)LP.v_shadowed.size();
 	stats.ls_unshadowed_point_in += (u32)LP.v_point.size();
 	stats.ls_unshadowed_spot_in += (u32)LP.v_spot.size();
@@ -182,6 +183,7 @@ void CRender::render_lights(light_Package& LP)
 					L = source.back();
 					if (L->vis.smap_ID != sid)	break;
 					source.pop_back();
+					const u32 shadow_draw_calls_before = shadow_stats_enabled ? RCache.stat.calls : 0;
 					// render
 					phase = PHASE_SMAP;
 #if defined(USE_DX10) || defined(USE_DX11)
@@ -247,6 +249,8 @@ void CRender::render_lights(light_Package& LP)
 					{
 						L_spot_s.push_back(L);
 					}
+					if (shadow_stats_enabled)
+						PortalTraverseDbg_Get().shadow_local_draw_calls += RCache.stat.calls - shadow_draw_calls_before;
 				}
 			}
 			//		if (was_spot_shadowed)		->	accum spot shadowed

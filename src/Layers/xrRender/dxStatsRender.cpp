@@ -62,6 +62,9 @@ void dxStatsRender::OutData4(CGameFont& F)
 				hom_stats.false_hidden, hom_stats.legacy_cells);
 		F.OutNext("cull: fr[%u] hom[%u] ssa[%u] sec[%u] shrecv[%u]", pstats.culled_frustum, pstats.culled_hom,
 			pstats.culled_ssa, pstats.culled_sector, pstats.culled_shadow_receiver);
+		F.OutNext("shadow: reject st[%u] dyn[%u] dt[%u] draw sun[%u] local[%u]", pstats.culled_shadow_receiver_static,
+			pstats.culled_shadow_receiver_dynamic, pstats.culled_shadow_details, pstats.shadow_sun_draw_calls,
+			pstats.shadow_local_draw_calls);
 		F.OutNext("trv: all[%u] opt[%u] noopt[%u]", pstats.traverse_calls, pstats.traverse_calls_with_options, pstats.traverse_calls_without_options);
         F.OutNext("frustum: push[%u] o[%u] n[%u] max[%u] o[%u] n[%u]", pstats.frustums_pushed, pstats.frustums_pushed_opt,
             pstats.frustums_pushed_noopt, pstats.max_frustums_in_sector, pstats.max_frustums_in_sector_opt, pstats.max_frustums_in_sector_noopt);

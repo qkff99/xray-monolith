@@ -90,6 +90,8 @@ void CRender::render_sun_cascade(u32 cascade_ind)
 	PROF_EVENT("Render Cascade");
 	light* fuckingsun = (light*)Lights.sun_adapted._get();
 	sun::cascade& cascade = m_sun_cascades[cascade_ind];
+	const bool shadow_stats_enabled = PortalTraverseDbg_Enabled();
+	const u32 shadow_draw_calls_before = shadow_stats_enabled ? RCache.stat.calls : 0;
 
 	CFrustum& cull_frustum = cascade.cull_frustum;
 	xr_vector<Fplane> cull_planes;
@@ -433,6 +435,8 @@ void CRender::render_sun_cascade(u32 cascade_ind)
 
         // End SMAP-render
     }	
+	if (shadow_stats_enabled)
+		PortalTraverseDbg_Get().shadow_sun_draw_calls += RCache.stat.calls - shadow_draw_calls_before;
 
 	// Accumulate
 	PROF_EVENT("Render Cascade: Accumulate");

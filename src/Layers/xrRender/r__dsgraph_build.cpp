@@ -31,22 +31,23 @@ ICF float CalcSSA(float& distSQ, Fvector& C, dxRender_Visual* V)
     return CalcSSA(distSQ, C, V->vis.sphere.R);
 }
 
+ICF void CountShadowReceiverReject(bool dynamic)
+{
+	if (!PortalTraverseDbg_Enabled())
+		return;
+
+	PortalTraverseDebugStats& dbg = PortalTraverseDbg_Get();
+	++dbg.culled_shadow_receiver;
+	if (dynamic)
+		++dbg.culled_shadow_receiver_dynamic;
+	else
+		++dbg.culled_shadow_receiver_static;
+}
+
 void CDSGraphManager::r_dsgraph_insert_dynamic(dxRender_Visual *pVisual, Fmatrix* xform)
 {
 	Fvector Center;
 	xform->transform_tiny(Center, pVisual->vis.sphere.P);
-
-	if (i_shadow_receiver_clip)
-	{
-		Fbox world_bounds;
-		world_bounds.xform(pVisual->vis.box, *xform);
-		if (!shadow_receiver_visible(world_bounds))
-		{
-			if (PortalTraverseDbg_Enabled())
-				++PortalTraverseDbg_Get().culled_shadow_receiver;
-			return;
-		}
-	}
 
 	float distSQ;
 	float SSA = CalcSSA(distSQ, Center, pVisual);
@@ -266,13 +267,6 @@ extern float ps_r__ssaDISCARD_exp;
 extern float ps_r__ssaDISCARD_fade_k;
 void CDSGraphManager::r_dsgraph_insert_static(dxRender_Visual *pVisual)
 {
-	if (!shadow_receiver_visible(pVisual->vis.box))
-	{
-		if (PortalTraverseDbg_Enabled())
-			++PortalTraverseDbg_Get().culled_shadow_receiver;
-		return;
-	}
-
 	if (m_static_seen.find(pVisual) != m_static_seen.end())
 	{
 		if (PortalTraverseDbg_Enabled())
@@ -469,6 +463,11 @@ void CDSGraphManager::add_Dynamic(IRenderVisual* piVisual, Fmatrix* xform)
 
 	if (!i_mask[CDSGraphManager::fl_normal] && !!flags.test(IRenderVisualFlags::eNoShadow))
 		return;
+	if (pVisual->Type != MT_PARTICLE_GROUP && !shadow_receiver_visible(pVisual->vis.box, *xform))
+	{
+		CountShadowReceiverReject(true);
+		return;
+	}
 
 	// Visual is 100% visible - simply add it
 	switch (pVisual->Type)
@@ -536,6 +535,11 @@ void CDSGraphManager::add_Dynamic(dxRender_Visual* pVisual, Fmatrix* xform)
 
 	if (!i_mask[CDSGraphManager::fl_normal] && !!flags.test(IRenderVisualFlags::eNoShadow))
 		return;
+	if (pVisual->Type != MT_PARTICLE_GROUP && !shadow_receiver_visible(pVisual->vis.box, *xform))
+	{
+		CountShadowReceiverReject(true);
+		return;
+	}
 
 	// Visual is 100% visible - simply add it
 	switch (pVisual->Type)
@@ -633,6 +637,11 @@ void CDSGraphManager::add_Static(IRenderVisual* piVisual, CFrustum& frustum, u32
 	{
 		if (PortalTraverseDbg_Enabled())
 			++PortalTraverseDbg_Get().culled_frustum;
+		return;
+	}
+	if (!shadow_receiver_visible(vis.box))
+	{
+		CountShadowReceiverReject(false);
 		return;
 	}
 
@@ -769,6 +778,11 @@ void CDSGraphManager::add_Static_MultiFrustum(IRenderVisual* piVisual, const xr_
 			++dbg->culled_frustum;
 		return;
 	}
+	if (!shadow_receiver_visible(vis.box))
+	{
+		CountShadowReceiverReject(false);
+		return;
+	}
 
 #if RENDER!=R_R1
 	if (i_mask[CDSGraphManager::fl_normal])//phase normal
@@ -835,6 +849,12 @@ void CDSGraphManager::add_Static_MultiFrustum(IRenderVisual* piVisual, const xr_
 
 void CDSGraphManager::add_leaf_Static(dxRender_Visual* pVisual)
 {
+	if (!shadow_receiver_visible(pVisual->vis.box))
+	{
+		CountShadowReceiverReject(false);
+		return;
+	}
+
 #if RENDER!=R_R1
 	if (i_mask[CDSGraphManager::fl_normal])//phase normal
 #endif
